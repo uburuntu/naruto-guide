@@ -1,8 +1,9 @@
 /**
- * StatsPanel — статистика по типам серий
+ * StatsPanel — статистика по типам серий и время просмотра
  */
-import { type Episode, MARKERS, type MarkerType } from '@/lib/data';
-import { Tv, Film, Clapperboard } from 'lucide-react';
+import type { Episode } from '@/lib/data';
+import { calculateViewingTime, formatViewingTime } from '@/lib/arc-utils';
+import { Tv, Film, Clapperboard, Clock } from 'lucide-react';
 
 interface StatsPanelProps {
   filteredEpisodes: Episode[];
@@ -14,15 +15,10 @@ export function StatsPanel({ filteredEpisodes, watchedCount }: StatsPanelProps) 
   const series = filteredEpisodes.filter(e => e.type === 'series').length;
   const films = filteredEpisodes.filter(e => e.type === 'film').length;
   const ovas = filteredEpisodes.filter(e => e.type === 'ova').length;
-
-  // Count by marker type
-  const markerCounts: Partial<Record<MarkerType, number>> = {};
-  for (const ep of filteredEpisodes) {
-    markerCounts[ep.marker] = (markerCounts[ep.marker] || 0) + 1;
-  }
+  const viewingTime = calculateViewingTime(filteredEpisodes);
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
       <div className="bg-card/40 border border-border/50 rounded-lg p-3 text-center">
         <div className="text-2xl font-display font-bold text-primary">{total}</div>
         <div className="text-xs text-muted-foreground mt-1">Всего записей</div>
@@ -47,6 +43,13 @@ export function StatsPanel({ filteredEpisodes, watchedCount }: StatsPanelProps) 
           <span className="text-2xl font-display font-bold text-foreground">{ovas}</span>
         </div>
         <div className="text-xs text-muted-foreground mt-1">ОВА</div>
+      </div>
+      <div className="bg-card/40 border border-border/50 rounded-lg p-3 text-center col-span-2 sm:col-span-1">
+        <div className="flex items-center justify-center gap-1.5">
+          <Clock className="w-4 h-4 text-accent" />
+          <span className="text-2xl font-display font-bold text-foreground">~{formatViewingTime(viewingTime)}</span>
+        </div>
+        <div className="text-xs text-muted-foreground mt-1">Время просмотра</div>
       </div>
     </div>
   );

@@ -1,15 +1,39 @@
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { EPISODES, WATCH_MODES, SOURCE_URL, SOURCE_AUTHOR, type MarkerType } from '@/lib/data';
+import { ARCS } from '@/lib/arcs';
+import { groupEpisodesByArcs } from '@/lib/arc-utils';
+import { getProgressFromURL, decodeProgress, clearProgressFromURL } from '@/lib/progress-sharing';
 import { FilterPanel } from '@/components/FilterPanel';
 import { StatsPanel } from '@/components/StatsPanel';
 import { ProgressBar } from '@/components/ProgressBar';
 import { MarkerLegend } from '@/components/MarkerLegend';
-import { EpisodeRow } from '@/components/EpisodeRow';
+import { ArcSection } from '@/components/ArcSection';
+import { ArcTimeline } from '@/components/ArcTimeline';
+import { SearchBar } from '@/components/SearchBar';
+import { ShareButton } from '@/components/ShareButton';
 import { useSpoilerMode } from '@/hooks/useSpoilerMode';
-import { EyeOff, Eye, BookOpen, ExternalLink, ChevronDown } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { useCollapsedArcs } from '@/hooks/useCollapsedArcs';
+import { useDebounce } from '@/hooks/useDebounce';
+import { EyeOff, Eye, BookOpen, ExternalLink, ChevronDown, Download, Combine, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const WATCHED_STORAGE_KEY = 'naruto-watched';
+const DEFAULT_MODE = 'golden';
+
+function getModeFromURL(): string {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('mode') || DEFAULT_MODE;
+}
+
+function setModeInURL(mode: string) {
+  const url = new URL(window.location.href);
+  if (mode === DEFAULT_MODE) {
+    url.searchParams.delete('mode');
+  } else {
+    url.searchParams.set('mode', mode);
+  }
+  window.history.replaceState({}, '', url.pathname + url.search);
+}
 
 function loadWatched(): Set<number> {
   try {
@@ -26,14 +50,56 @@ function saveWatched(watched: Set<number>) {
 }
 
 export default function Home() {
-  const [activeMode, setActiveMode] = useState('all');
+  const [activeMode, setActiveModeState] = useState(getModeFromURL);
+
+  const setActiveMode = useCallback((mode: string) => {
+    setActiveModeState(mode);
+    setModeInURL(mode);
+  }, []);
   const [activeSeason, setActiveSeason] = useState<'all' | 1 | 2>('all');
   const [watched, setWatched] = useState<Set<number>>(loadWatched);
+  const [searchInput, setSearchInput] = useState('');
+  const [importDialog, setImportDialog] = useState<{ watched: Set<number> } | null>(null);
+  const searchQuery = useDebounce(searchInput, 300);
   const { spoilersHidden, toggleSpoilers } = useSpoilerMode();
+  const { isCollapsed, toggleArc, expandAll } = useCollapsedArcs();
   const contentRef = useRef<HTMLDivElement>(null);
 
   const currentMode = WATCH_MODES.find(m => m.id === activeMode) || WATCH_MODES[0];
 
+  // Check URL for shared progress on mount
+  useEffect(() => {
+    const encoded = getProgressFromURL();
+    if (encoded) {
+      const imported = decodeProgress(encoded);
+      if (imported.size > 0) {
+        setImportDialog({ watched: imported });
+      }
+    }
+  }, []);
+
+  const handleImport = useCallback((mode: 'replace' | 'merge') => {
+    if (!importDialog) return;
+    setWatched(prev => {
+      let next: Set<number>;
+      if (mode === 'replace') {
+        next = new Set(importDialog.watched);
+      } else {
+        next = new Set([...prev, ...importDialog.watched]);
+      }
+      saveWatched(next);
+      return next;
+    });
+    setImportDialog(null);
+    clearProgressFromURL();
+  }, [importDialog]);
+
+  const handleDismissImport = useCallback(() => {
+    setImportDialog(null);
+    clearProgressFromURL();
+  }, []);
+
+  // Filter episodes by mode and season
   const filteredEpisodes = useMemo(() => {
     return EPISODES.filter(ep => {
       if (!currentMode.markers.includes(ep.marker as MarkerType)) return false;
@@ -42,8 +108,39 @@ export default function Home() {
     });
   }, [activeMode, activeSeason, currentMode.markers]);
 
-  const season1Episodes = useMemo(() => filteredEpisodes.filter(ep => ep.season === 1), [filteredEpisodes]);
-  const season2Episodes = useMemo(() => filteredEpisodes.filter(ep => ep.season === 2), [filteredEpisodes]);
+  // Build episode-to-arc map for search
+  const episodeToArc = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const arc of ARCS) {
+      for (const id of arc.episodeIds) {
+        map.set(id, arc.name);
+      }
+    }
+    return map;
+  }, []);
+
+  // Apply search filter
+  const searchedEpisodes = useMemo(() => {
+    if (!searchQuery.trim()) return filteredEpisodes;
+    const q = searchQuery.toLowerCase().trim();
+    return filteredEpisodes.filter(ep => {
+      if (ep.title.toLowerCase().includes(q)) return true;
+      if (ep.episodes.toLowerCase().includes(q)) return true;
+      if (ep.note?.toLowerCase().includes(q)) return true;
+      const arcName = episodeToArc.get(ep.id);
+      if (arcName?.toLowerCase().includes(q)) return true;
+      return false;
+    });
+  }, [filteredEpisodes, searchQuery, episodeToArc]);
+
+  // Group by arcs
+  const arcGroups = useMemo(() => {
+    return groupEpisodesByArcs(ARCS, searchedEpisodes, activeSeason === 'all' ? undefined : activeSeason);
+  }, [searchedEpisodes, activeSeason]);
+
+  const visibleEpisodeIds = useMemo(() => {
+    return new Set(searchedEpisodes.map(e => e.id));
+  }, [searchedEpisodes]);
 
   const watchedInFiltered = useMemo(() => {
     return filteredEpisodes.filter(ep => watched.has(ep.id)).length;
@@ -62,29 +159,97 @@ export default function Home() {
     });
   }, []);
 
+  const batchToggle = useCallback((ids: number[], state: boolean) => {
+    setWatched(prev => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (state) next.add(id);
+        else next.delete(id);
+      }
+      saveWatched(next);
+      return next;
+    });
+  }, []);
+
   const scrollToContent = () => {
     contentRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const showSeasonHeaders = activeSeason === 'all' && season1Episodes.length > 0 && season2Episodes.length > 0;
+  const handleArcClick = useCallback((arcId: string) => {
+    const el = document.getElementById(`arc-${arcId}`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, []);
+
+  // Season breaks for rendering
+  const season1Arcs = arcGroups.filter(g => g.arc.season === 1);
+  const season2Arcs = arcGroups.filter(g => g.arc.season === 2);
+  const showSeasonHeaders = activeSeason === 'all' && season1Arcs.length > 0 && season2Arcs.length > 0;
 
   return (
     <div className="min-h-screen bg-background">
+      {/* ===== IMPORT DIALOG ===== */}
+      <AnimatePresence>
+        {importDialog && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-card border border-border rounded-xl p-6 max-w-sm w-full shadow-2xl"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-display font-bold text-foreground">Импорт прогресса</h3>
+                <button onClick={handleDismissImport} className="p-1 rounded hover:bg-muted transition-colors">
+                  <X className="w-4 h-4 text-muted-foreground" />
+                </button>
+              </div>
+              <p className="text-sm text-muted-foreground mb-6">
+                Обнаружен прогресс из ссылки ({importDialog.watched.size} записей). Что сделать?
+              </p>
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={() => handleImport('replace')}
+                  className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground font-display font-semibold text-sm hover:brightness-110 transition-all"
+                >
+                  <Download className="w-4 h-4" />
+                  Заменить текущий
+                </button>
+                <button
+                  onClick={() => handleImport('merge')}
+                  className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-card/60 text-foreground font-display font-semibold text-sm hover:bg-card/80 transition-all"
+                >
+                  <Combine className="w-4 h-4" />
+                  Объединить
+                </button>
+                <button
+                  onClick={handleDismissImport}
+                  className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Отмена
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ===== HERO SECTION ===== */}
       <section className="relative h-[85vh] min-h-[500px] max-h-[900px] flex items-end overflow-hidden">
-        {/* Background Image */}
         <div className="absolute inset-0">
           <img
             src="/images/naruto-hero.jpg"
             alt=""
             className="w-full h-full object-cover object-top"
           />
-          {/* Gradient overlays */}
           <div className="absolute inset-0 bg-gradient-to-t from-background via-background/70 to-transparent" />
           <div className="absolute inset-0 bg-gradient-to-r from-background/60 to-transparent" />
         </div>
 
-        {/* Hero Content */}
         <div className="relative container mx-auto pb-12 sm:pb-16">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
@@ -129,7 +294,6 @@ export default function Home() {
             </div>
           </motion.div>
 
-          {/* Scroll indicator */}
           <motion.button
             onClick={scrollToContent}
             className="absolute bottom-4 left-1/2 -translate-x-1/2 text-muted-foreground/40 hover:text-muted-foreground transition-colors hidden sm:block"
@@ -141,33 +305,40 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ===== STICKY HEADER (appears on scroll) ===== */}
+      {/* ===== STICKY HEADER ===== */}
       <header ref={contentRef} className="sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border">
         <div className="container mx-auto py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <h2 className="text-lg font-display font-bold text-foreground">
-                Наруто: Гайд
-              </h2>
-              <span className="hidden sm:inline text-xs text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-md">
-                {currentMode.name}
-              </span>
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-display font-bold text-foreground shrink-0">
+              Наруто: Гайд
+            </h2>
+            <span className="hidden sm:inline text-xs text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-md shrink-0">
+              {currentMode.name}
+            </span>
+            <div className="flex-1 max-w-xs hidden sm:block">
+              <SearchBar value={searchInput} onChange={setSearchInput} />
             </div>
-            <button
-              onClick={toggleSpoilers}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border border-border bg-card/40 hover:bg-card/60 transition-colors text-muted-foreground"
-              title={spoilersHidden ? 'Показать спойлеры' : 'Скрыть спойлеры'}
-            >
-              {spoilersHidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              <span className="hidden sm:inline">{spoilersHidden ? 'Спойлеры скрыты' : 'Спойлеры видны'}</span>
-            </button>
+            <div className="flex items-center gap-2 ml-auto shrink-0">
+              <ShareButton watched={watched} />
+              <button
+                onClick={toggleSpoilers}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border border-border bg-card/40 hover:bg-card/60 transition-colors text-muted-foreground"
+                title={spoilersHidden ? 'Показать спойлеры' : 'Скрыть спойлеры'}
+              >
+                {spoilersHidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                <span className="hidden sm:inline">{spoilersHidden ? 'Спойлеры скрыты' : 'Спойлеры видны'}</span>
+              </button>
+            </div>
+          </div>
+          {/* Mobile search */}
+          <div className="sm:hidden mt-2">
+            <SearchBar value={searchInput} onChange={setSearchInput} />
           </div>
         </div>
       </header>
 
-      {/* ===== MAIN CONTENT (with pattern background) ===== */}
+      {/* ===== MAIN CONTENT ===== */}
       <main className="relative">
-        {/* Subtle pattern background */}
         <div
           className="absolute inset-0 opacity-[0.03] pointer-events-none"
           style={{ backgroundImage: 'url(/images/naruto-pattern.jpg)', backgroundSize: '600px', backgroundRepeat: 'repeat' }}
@@ -182,6 +353,22 @@ export default function Home() {
             transition={{ duration: 0.5 }}
           >
             <ProgressBar watched={watchedInFiltered} total={filteredEpisodes.length} />
+          </motion.div>
+
+          {/* Arc Timeline */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5, delay: 0.05 }}
+          >
+            <ArcTimeline
+              arcs={ARCS}
+              episodes={EPISODES}
+              watched={watched}
+              visibleEpisodeIds={visibleEpisodeIds}
+              onArcClick={handleArcClick}
+            />
           </motion.div>
 
           {/* Filters */}
@@ -212,28 +399,32 @@ export default function Home() {
           {/* Legend */}
           <MarkerLegend />
 
-          {/* ===== EPISODE LIST ===== */}
+          {/* ===== ARC-GROUPED EPISODE LIST ===== */}
           <div className="space-y-2">
             {showSeasonHeaders ? (
               <>
-                {/* Season 1 Header */}
+                {/* Season 1 */}
                 <SeasonHeader
                   title="Сезон 1: Наруто"
                   subtitle="Серии 1–220"
                   image="/images/naruto-season1.jpg"
                 />
-                {season1Episodes.map(episode => (
-                  <EpisodeRow
-                    key={episode.id}
-                    episode={episode}
-                    isWatched={watched.has(episode.id)}
+                {season1Arcs.map(({ arc, episodes }) => (
+                  <ArcSection
+                    key={arc.id}
+                    arc={arc}
+                    episodes={episodes}
+                    watched={watched}
                     onToggle={toggleWatched}
-                    isVisible={true}
+                    onBatchToggle={batchToggle}
                     spoilersHidden={spoilersHidden}
+                    isCollapsed={searchQuery ? false : isCollapsed(arc.id)}
+                    onToggleCollapse={() => toggleArc(arc.id)}
+                    searchQuery={searchQuery}
                   />
                 ))}
 
-                {/* Season 2 Header */}
+                {/* Season 2 */}
                 <div className="pt-6">
                   <SeasonHeader
                     title="Сезон 2: Ураганные Хроники"
@@ -241,20 +432,23 @@ export default function Home() {
                     image="/images/naruto-season2.jpg"
                   />
                 </div>
-                {season2Episodes.map(episode => (
-                  <EpisodeRow
-                    key={episode.id}
-                    episode={episode}
-                    isWatched={watched.has(episode.id)}
+                {season2Arcs.map(({ arc, episodes }) => (
+                  <ArcSection
+                    key={arc.id}
+                    arc={arc}
+                    episodes={episodes}
+                    watched={watched}
                     onToggle={toggleWatched}
-                    isVisible={true}
+                    onBatchToggle={batchToggle}
                     spoilersHidden={spoilersHidden}
+                    isCollapsed={searchQuery ? false : isCollapsed(arc.id)}
+                    onToggleCollapse={() => toggleArc(arc.id)}
+                    searchQuery={searchQuery}
                   />
                 ))}
               </>
             ) : (
               <>
-                {/* Single season header when filtered */}
                 {activeSeason === 1 && (
                   <SeasonHeader
                     title="Сезон 1: Наруто"
@@ -269,17 +463,28 @@ export default function Home() {
                     image="/images/naruto-season2.jpg"
                   />
                 )}
-                {filteredEpisodes.map(episode => (
-                  <EpisodeRow
-                    key={episode.id}
-                    episode={episode}
-                    isWatched={watched.has(episode.id)}
+                {arcGroups.map(({ arc, episodes }) => (
+                  <ArcSection
+                    key={arc.id}
+                    arc={arc}
+                    episodes={episodes}
+                    watched={watched}
                     onToggle={toggleWatched}
-                    isVisible={true}
+                    onBatchToggle={batchToggle}
                     spoilersHidden={spoilersHidden}
+                    isCollapsed={searchQuery ? false : isCollapsed(arc.id)}
+                    onToggleCollapse={() => toggleArc(arc.id)}
+                    searchQuery={searchQuery}
                   />
                 ))}
               </>
+            )}
+
+            {searchQuery && arcGroups.length === 0 && (
+              <div className="text-center py-12 text-muted-foreground">
+                <p className="text-lg font-display">Ничего не найдено</p>
+                <p className="text-sm mt-1">Попробуйте изменить поисковый запрос</p>
+              </div>
             )}
           </div>
         </div>

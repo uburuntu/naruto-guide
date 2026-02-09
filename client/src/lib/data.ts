@@ -43,7 +43,7 @@ export const WATCH_MODES: WatchMode[] = [
   {
     id: 'all',
     name: 'Все серии',
-    shortName: 'Все',
+    shortName: 'Все серии',
     episodes: '720 серий',
     description: 'Показать все серии без фильтрации',
     markers: ['С', 'П', 'Ф1', 'Ф2', 'Ф3', 'Ф4', 'ФН', 'С+Ф1', 'С+Ф2', 'С+Ф3', 'С+Ф4', 'С+ФН'],
@@ -70,7 +70,7 @@ export const WATCH_MODES: WatchMode[] = [
   {
     id: 'golden',
     name: 'Золотой стандарт',
-    shortName: 'Золотой',
+    shortName: 'Золотой стандарт',
     episodes: '~570 серий',
     description: 'Подробное изучение без посредственного контента.',
     markers: ['С', 'ФН', 'Ф1', 'Ф2', 'С+Ф1', 'С+Ф2', 'С+Ф3', 'С+Ф4', 'С+ФН'],
@@ -79,7 +79,7 @@ export const WATCH_MODES: WatchMode[] = [
   {
     id: 'full',
     name: 'Полное погружение',
-    shortName: 'Полное',
+    shortName: 'Полное погружение',
     episodes: '~630 серий',
     description: 'Максимум контента, кроме совсем плохого.',
     markers: ['С', 'ФН', 'Ф1', 'Ф2', 'Ф3', 'С+Ф1', 'С+Ф2', 'С+Ф3', 'С+Ф4', 'С+ФН'],
@@ -88,7 +88,7 @@ export const WATCH_MODES: WatchMode[] = [
   {
     id: 'survival',
     name: 'Испытание на выживание',
-    shortName: 'Выживание',
+    shortName: 'На выживание',
     episodes: '714-720 серий',
     description: 'Абсолютно всё, кроме повторок. На свой страх и риск!',
     markers: ['С', 'Ф1', 'Ф2', 'Ф3', 'Ф4', 'ФН', 'С+Ф1', 'С+Ф2', 'С+Ф3', 'С+Ф4', 'С+ФН'],
