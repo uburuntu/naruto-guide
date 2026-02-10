@@ -1,5 +1,7 @@
 # Naruto & Boruto Guide
 
+![Naruto & Boruto Guide](client/public/images/og-image.jpg)
+
 Interactive viewing guide for Naruto (720 episodes, 11 films, 13 OVAs) and Boruto: Naruto Next Generations (293 episodes). Based on the [guide by Даинг Окаянный](https://shikimori.one/articles/365-naruto-ultimativnyy-gayd-po-prosmotru) on Shikimori.
 
 ## Features
