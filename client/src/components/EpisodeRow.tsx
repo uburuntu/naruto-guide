@@ -94,9 +94,8 @@ export const EpisodeRow = memo(function EpisodeRow({ episode, isWatched, onToggl
       <div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-center gap-2 mb-1">
           <MarkerBadge marker={episode.marker} />
-          <span className="text-muted-foreground flex items-center gap-1 text-xs">
+          <span className="text-muted-foreground/60">
             {getTypeIcon(episode.type)}
-            <span>{getTypeLabel(episode.type)}</span>
           </span>
           <span className="text-sm font-medium text-muted-foreground">
             {episode.episodes}
