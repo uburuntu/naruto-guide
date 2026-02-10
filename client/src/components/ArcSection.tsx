@@ -4,7 +4,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { RatingBadge } from '@/components/RatingBadge';
 import { EpisodeRow } from '@/components/EpisodeRow';
 import { ChevronDown, Clock, BookOpen } from 'lucide-react';
-import { type Arc, getArcProgress, calculateViewingTime, formatViewingTime } from '@/lib/arc-utils';
+import { type Arc, calculateViewingTime, formatViewingTime } from '@/lib/arc-utils';
 import type { Episode } from '@/lib/data';
 
 interface ArcSectionProps {
@@ -29,14 +29,16 @@ export const ArcSection = memo(function ArcSection({
   isCollapsed,
   onToggleCollapse,
 }: ArcSectionProps) {
-  const progress = getArcProgress(arc, watched);
+  const visibleIds = episodes.map(ep => ep.id);
+  const total = episodes.length;
+  const watchedCount = visibleIds.filter(id => watched.has(id)).length;
+  const percentage = total > 0 ? Math.round((watchedCount / total) * 100) : 0;
   const viewingTime = calculateViewingTime(episodes);
-  const allWatched = progress.watched === progress.total && progress.total > 0;
-  const someWatched = progress.watched > 0 && !allWatched;
+  const allWatched = watchedCount === total && total > 0;
+  const someWatched = watchedCount > 0 && !allWatched;
 
   const handleBatchToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const visibleIds = episodes.map(ep => ep.id);
     onBatchToggle(visibleIds, !allWatched);
   };
 
@@ -94,7 +96,7 @@ export const ArcSection = memo(function ArcSection({
 
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
               <span className="text-xs text-muted-foreground">
-                {progress.watched}/{progress.total} записей
+                {watchedCount}/{total} записей
               </span>
               <span className="text-xs text-muted-foreground/60 flex items-center gap-1">
                 <Clock className="w-3 h-3" />
@@ -105,7 +107,7 @@ export const ArcSection = memo(function ArcSection({
                 <div
                   className="h-full rounded-full transition-all duration-300"
                   style={{
-                    width: `${progress.percentage}%`,
+                    width: `${percentage}%`,
                     background: 'linear-gradient(90deg, oklch(0.72 0.19 55), oklch(0.65 0.20 40))',
                   }}
                 />

@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { Arc } from '@/lib/arc-utils';
-import { getArcProgress, getArcDominantMarker } from '@/lib/arc-utils';
+import { getArcDominantMarker } from '@/lib/arc-utils';
 import type { Episode } from '@/lib/data';
 import { MARKERS } from '@/lib/data';
 
@@ -33,9 +33,11 @@ export function ArcTimeline({ arcs, episodes, watched, visibleEpisodeIds, onArcC
       </h3>
       <div className="relative flex gap-0.5 h-8 rounded-lg overflow-hidden bg-muted/30 border border-border/50">
         {visibleArcs.map(arc => {
-          const visibleCount = arc.episodeIds.filter(id => visibleEpisodeIds.has(id)).length;
+          const arcVisibleIds = arc.episodeIds.filter(id => visibleEpisodeIds.has(id));
+          const visibleCount = arcVisibleIds.length;
           const widthPercent = (visibleCount / totalEpisodes) * 100;
-          const progress = getArcProgress(arc, watched);
+          const watchedCount = arcVisibleIds.filter(id => watched.has(id)).length;
+          const percentage = visibleCount > 0 ? Math.round((watchedCount / visibleCount) * 100) : 0;
           const dominant = getArcDominantMarker(arc, episodes);
           const color = MARKERS[dominant]?.color || '#6b7280';
 
@@ -56,7 +58,7 @@ export function ArcTimeline({ arcs, episodes, watched, visibleEpisodeIds, onArcC
                   <div
                     className="absolute inset-y-0 left-0 transition-all duration-300"
                     style={{
-                      width: `${progress.percentage}%`,
+                      width: `${percentage}%`,
                       backgroundColor: color,
                     }}
                   />
@@ -65,7 +67,7 @@ export function ArcTimeline({ arcs, episodes, watched, visibleEpisodeIds, onArcC
               <TooltipContent side="bottom" className="max-w-[220px]">
                 <p className="font-display font-semibold text-sm">{arc.name}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  {progress.watched}/{progress.total} • {arc.rating ? `${arc.rating}/10` : 'Без рейтинга'}
+                  {watchedCount}/{visibleCount} • {arc.rating ? `${arc.rating}/10` : 'Без рейтинга'}
                 </p>
               </TooltipContent>
             </Tooltip>
