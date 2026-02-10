@@ -126,8 +126,8 @@ export const EpisodeRow = memo(function EpisodeRow({ episode, isWatched, onToggl
           )}
         </div>
         {episode.note && (
-          <div className={`mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground/80 transition-all duration-300 ${shouldBlur ? 'blur-sm select-none' : ''}`}>
-            <Info className="w-3.5 h-3.5 mt-0.5 shrink-0 text-accent" />
+          <div className={`mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground/80 transition-all duration-300 ${shouldBlur ? 'blur-sm select-none' : ''}`}>
+            <Info className="w-3.5 h-3.5 shrink-0 text-accent" />
             <span>{episode.note}</span>
           </div>
         )}

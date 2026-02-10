@@ -15,7 +15,7 @@ import { useSpoilerMode } from '@/hooks/useSpoilerMode';
 import { useCollapsedArcs } from '@/hooks/useCollapsedArcs';
 import { useDebounce } from '@/hooks/useDebounce';
 import { usePWAInstall } from '@/hooks/usePWAInstall';
-import { EyeOff, Eye, BookOpen, ExternalLink, ChevronDown, Download, Combine, X, Smartphone } from 'lucide-react';
+import { EyeOff, Eye, BookOpen, ExternalLink, ChevronDown, Download, Combine, X, Smartphone, Github } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface HomeProps {
@@ -506,6 +506,17 @@ export default function Home({ config }: HomeProps) {
               {' '}от {config.sourceAuthor}
             </p>
           )}
+          <p>
+            <a
+              href="https://github.com/uburuntu/naruto-guide?tab=readme-ov-file#contributing-data-edits-and-new-seasons"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+            >
+              <Github className="w-3.5 h-3.5" />
+              Код проекта
+            </a>
+          </p>
         </div>
       </footer>
     </div>
