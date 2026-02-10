@@ -101,6 +101,11 @@ export const EpisodeRow = memo(function EpisodeRow({ episode, isWatched, onToggl
           <span className="text-sm font-medium text-muted-foreground">
             {episode.episodes}
           </span>
+          {episode.releaseDate && (
+            <span className="text-xs text-muted-foreground/50">
+              {episode.releaseDate}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <h3

@@ -1,11 +1,9 @@
 import { useState, useCallback } from 'react';
 
-const STORAGE_KEY = 'naruto-spoiler-mode';
-
-export function useSpoilerMode() {
+export function useSpoilerMode(storageKey: string) {
   const [spoilersHidden, setSpoilersHidden] = useState<boolean>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+      const saved = localStorage.getItem(storageKey);
       // По умолчанию спойлеры скрыты (true) для новых пользователей
       if (saved === null) return true;
       return JSON.parse(saved) as boolean;
@@ -18,11 +16,11 @@ export function useSpoilerMode() {
     setSpoilersHidden(prev => {
       const next = !prev;
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        localStorage.setItem(storageKey, JSON.stringify(next));
       } catch {}
       return next;
     });
-  }, []);
+  }, [storageKey]);
 
   return { spoilersHidden, toggleSpoilers };
 }

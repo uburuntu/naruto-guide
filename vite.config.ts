@@ -12,10 +12,10 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["favicon.ico", "icons/*.png"],
       manifest: {
-        name: "Наруто: Гайд по просмотру",
-        short_name: "Наруто Гайд",
+        name: "Наруто и Боруто Гайд",
+        short_name: "НБ Гайд",
         description:
-          "Интерактивный гайд по просмотру Наруто с трекером прогресса",
+          "Интерактивный гайд по просмотру Наруто и Боруто с трекером прогресса",
         start_url: "/",
         display: "standalone",
         background_color: "#1a1625",

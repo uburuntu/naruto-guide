@@ -4,9 +4,12 @@ import { generateShareURL } from '@/lib/progress-sharing';
 
 interface ShareButtonProps {
   watched: Set<number>;
+  maxEpisodeId: number;
+  progressParam: string;
+  seriesParam: string;
 }
 
-export function ShareButton({ watched }: ShareButtonProps) {
+export function ShareButton({ watched, maxEpisodeId, progressParam, seriesParam }: ShareButtonProps) {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -17,7 +20,12 @@ export function ShareButton({ watched }: ShareButtonProps) {
   }, [copied]);
 
   const handleShare = useCallback(async () => {
-    const url = generateShareURL(watched);
+    let url: string;
+    if (watched.size === 0 || maxEpisodeId === 0) {
+      url = window.location.origin + window.location.pathname;
+    } else {
+      url = generateShareURL(watched, maxEpisodeId, progressParam, seriesParam);
+    }
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
@@ -31,9 +39,7 @@ export function ShareButton({ watched }: ShareButtonProps) {
       document.body.removeChild(textArea);
       setCopied(true);
     }
-  }, [watched]);
-
-  if (watched.size === 0) return null;
+  }, [watched, maxEpisodeId, progressParam, seriesParam]);
 
   return (
     <button

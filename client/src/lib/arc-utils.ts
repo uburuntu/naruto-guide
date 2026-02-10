@@ -4,7 +4,7 @@ export interface Arc {
   id: string;
   name: string;
   description: string;
-  season: 1 | 2;
+  season: number;
   episodeIds: number[];
   rating?: number;
   mangaChapters?: string;
@@ -130,7 +130,7 @@ export function getArcVisibleEpisodes(arc: Arc, visibleEpisodeIds: Set<number>):
 export function groupEpisodesByArcs(
   arcs: Arc[],
   visibleEpisodes: Episode[],
-  season?: 1 | 2
+  season?: number
 ): { arc: Arc; episodes: Episode[] }[] {
   const visibleIds = new Set(visibleEpisodes.map(e => e.id));
   const episodeMap = new Map(visibleEpisodes.map(e => [e.id, e]));

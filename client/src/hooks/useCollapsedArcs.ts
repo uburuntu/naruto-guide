@@ -1,23 +1,21 @@
 import { useState, useCallback } from 'react';
 
-const STORAGE_KEY = 'naruto-collapsed-arcs';
-
-function loadCollapsed(): Set<string> {
+function loadCollapsed(storageKey: string): Set<string> {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const saved = localStorage.getItem(storageKey);
     if (saved) return new Set(JSON.parse(saved) as string[]);
   } catch {}
   return new Set();
 }
 
-function saveCollapsed(collapsed: Set<string>) {
+function saveCollapsed(storageKey: string, collapsed: Set<string>) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([...collapsed]));
+    localStorage.setItem(storageKey, JSON.stringify([...collapsed]));
   } catch {}
 }
 
-export function useCollapsedArcs() {
-  const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed);
+export function useCollapsedArcs(storageKey: string) {
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => loadCollapsed(storageKey));
 
   const toggleArc = useCallback((arcId: string) => {
     setCollapsed(prev => {
@@ -27,17 +25,17 @@ export function useCollapsedArcs() {
       } else {
         next.add(arcId);
       }
-      saveCollapsed(next);
+      saveCollapsed(storageKey, next);
       return next;
     });
-  }, []);
+  }, [storageKey]);
 
   const isCollapsed = useCallback((arcId: string) => collapsed.has(arcId), [collapsed]);
 
   const expandAll = useCallback(() => {
     setCollapsed(new Set());
-    saveCollapsed(new Set());
-  }, []);
+    saveCollapsed(storageKey, new Set());
+  }, [storageKey]);
 
   return { collapsed, toggleArc, isCollapsed, expandAll };
 }

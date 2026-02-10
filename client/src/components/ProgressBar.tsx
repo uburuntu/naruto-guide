@@ -1,5 +1,5 @@
 /**
- * ProgressBar — «Путь ниндзя» — прогресс просмотра
+ * ProgressBar — прогресс просмотра
  * Дизайн: оранжевый градиент с glow-эффектом
  */
 import { motion } from 'framer-motion';
@@ -7,16 +7,17 @@ import { motion } from 'framer-motion';
 interface ProgressBarProps {
   watched: number;
   total: number;
+  label: string;
 }
 
-export function ProgressBar({ watched, total }: ProgressBarProps) {
+export function ProgressBar({ watched, total, label }: ProgressBarProps) {
   const percentage = total > 0 ? Math.round((watched / total) * 100) : 0;
 
   return (
     <div className="w-full">
       <div className="flex items-center justify-between mb-2">
         <span className="text-sm font-display font-medium text-foreground">
-          Путь ниндзя
+          {label}
         </span>
         <span className="text-sm font-display text-muted-foreground">
           <span className="text-primary font-bold">{watched}</span>

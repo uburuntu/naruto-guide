@@ -1,19 +1,17 @@
 /**
  * Progress sharing via URL encoding.
  * Encodes watched episode IDs as a compact bitfield in URL-safe base64.
- * 175 episodes = 22 bytes = ~30 chars in base64.
+ * Series-aware: each series has its own maxEpisodeId and URL param.
  */
-
-const MAX_EPISODE_ID = 175;
-const BYTE_COUNT = Math.ceil(MAX_EPISODE_ID / 8);
 
 /**
  * Encode a watched set into a compact URL-safe base64 string.
  */
-export function encodeProgress(watched: Set<number>): string {
-  const bytes = new Uint8Array(BYTE_COUNT);
+export function encodeProgress(watched: Set<number>, maxEpisodeId: number): string {
+  const byteCount = Math.ceil(maxEpisodeId / 8);
+  const bytes = new Uint8Array(byteCount);
   for (const id of watched) {
-    if (id >= 1 && id <= MAX_EPISODE_ID) {
+    if (id >= 1 && id <= maxEpisodeId) {
       const byteIndex = Math.floor((id - 1) / 8);
       const bitIndex = (id - 1) % 8;
       bytes[byteIndex] |= 1 << bitIndex;
@@ -28,7 +26,7 @@ export function encodeProgress(watched: Set<number>): string {
 /**
  * Decode a URL-safe base64 string back into a watched set.
  */
-export function decodeProgress(encoded: string): Set<number> {
+export function decodeProgress(encoded: string, maxEpisodeId: number): Set<number> {
   try {
     const padded = encoded.replace(/-/g, '+').replace(/_/g, '/');
     const binary = atob(padded);
@@ -37,7 +35,7 @@ export function decodeProgress(encoded: string): Set<number> {
       bytes[i] = binary.charCodeAt(i);
     }
     const watched = new Set<number>();
-    for (let id = 1; id <= MAX_EPISODE_ID; id++) {
+    for (let id = 1; id <= maxEpisodeId; id++) {
       const byteIndex = Math.floor((id - 1) / 8);
       const bitIndex = (id - 1) % 8;
       if (byteIndex < bytes.length && bytes[byteIndex] & (1 << bitIndex)) {
@@ -53,25 +51,35 @@ export function decodeProgress(encoded: string): Set<number> {
 /**
  * Extract progress parameter from the current URL.
  */
-export function getProgressFromURL(): string | null {
+export function getProgressFromURL(paramName: string): string | null {
   const params = new URLSearchParams(window.location.search);
-  return params.get('p');
+  return params.get(paramName);
 }
 
 /**
  * Generate a shareable URL with encoded progress.
  */
-export function generateShareURL(watched: Set<number>): string {
-  const encoded = encodeProgress(watched);
+export function generateShareURL(
+  watched: Set<number>,
+  maxEpisodeId: number,
+  progressParam: string,
+  seriesParam: string
+): string {
+  const encoded = encodeProgress(watched, maxEpisodeId);
   const base = window.location.origin + window.location.pathname;
-  return `${base}?p=${encoded}`;
+  if (seriesParam === 'naruto') {
+    return `${base}?${progressParam}=${encoded}`;
+  }
+  return `${base}?s=${seriesParam}&${progressParam}=${encoded}`;
 }
 
 /**
  * Remove the progress parameter from the URL without reload.
  */
-export function clearProgressFromURL(): void {
+export function clearProgressFromURL(progressParam: string): void {
   const url = new URL(window.location.href);
-  url.searchParams.delete('p');
-  window.history.replaceState({}, '', url.pathname);
+  url.searchParams.delete(progressParam);
+  url.searchParams.delete('s');
+  const search = url.searchParams.toString();
+  window.history.replaceState({}, '', url.pathname + (search ? `?${search}` : ''));
 }

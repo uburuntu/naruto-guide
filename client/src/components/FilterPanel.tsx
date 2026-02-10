@@ -2,14 +2,17 @@
  * FilterPanel — панель фильтров по вариантам просмотра
  * Дизайн: карточки с glow-эффектами при выборе
  */
-import { WATCH_MODES, type WatchMode } from '@/lib/data';
+import type { WatchMode } from '@/lib/data';
+import type { SeasonDefinition } from '@/lib/series-config';
 import { motion } from 'framer-motion';
 
 interface FilterPanelProps {
   activeMode: string;
   onModeChange: (modeId: string) => void;
-  activeSeason: 'all' | 1 | 2;
-  onSeasonChange: (season: 'all' | 1 | 2) => void;
+  activeSeason: 'all' | number;
+  onSeasonChange: (season: 'all' | number) => void;
+  watchModes: WatchMode[];
+  seasons: SeasonDefinition[];
 }
 
 function ModeCard({ mode, isActive, onClick }: { mode: WatchMode; isActive: boolean; onClick: () => void }) {
@@ -37,7 +40,7 @@ function ModeCard({ mode, isActive, onClick }: { mode: WatchMode; isActive: bool
   );
 }
 
-export function FilterPanel({ activeMode, onModeChange, activeSeason, onSeasonChange }: FilterPanelProps) {
+export function FilterPanel({ activeMode, onModeChange, activeSeason, onSeasonChange, watchModes, seasons }: FilterPanelProps) {
   return (
     <div className="space-y-4">
       {/* Варианты просмотра */}
@@ -45,8 +48,8 @@ export function FilterPanel({ activeMode, onModeChange, activeSeason, onSeasonCh
         <h3 className="text-sm font-display font-semibold text-muted-foreground uppercase tracking-wider mb-3">
           Вариант просмотра
         </h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-          {WATCH_MODES.map(mode => (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+          {watchModes.map(mode => (
             <ModeCard
               key={mode.id}
               mode={mode}
@@ -56,45 +59,55 @@ export function FilterPanel({ activeMode, onModeChange, activeSeason, onSeasonCh
           ))}
         </div>
         {/* Описание выбранного режима */}
-        {WATCH_MODES.find(m => m.id === activeMode) && (
+        {watchModes.find(m => m.id === activeMode) && (
           <motion.p
             key={activeMode}
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             className="mt-3 text-sm text-muted-foreground bg-muted/30 rounded-lg px-4 py-2.5 border border-border/50"
           >
-            {WATCH_MODES.find(m => m.id === activeMode)!.description}
+            {watchModes.find(m => m.id === activeMode)!.description}
           </motion.p>
         )}
       </div>
 
       {/* Фильтр по сезонам */}
-      <div>
-        <h3 className="text-sm font-display font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-          Сезон
-        </h3>
-        <div className="flex gap-2">
-          {([
-            { value: 'all' as const, label: 'Все' },
-            { value: 1 as const, label: 'Сезон 1: Наруто' },
-            { value: 2 as const, label: 'Сезон 2: Шиппуден' },
-          ]).map(({ value, label }) => (
+      {seasons.length > 1 && (
+        <div>
+          <h3 className="text-sm font-display font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+            Сезон
+          </h3>
+          <div className="flex gap-2 flex-wrap">
             <button
-              key={String(value)}
-              onClick={() => onSeasonChange(value)}
+              onClick={() => onSeasonChange('all')}
               className={`
                 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 border
-                ${activeSeason === value
+                ${activeSeason === 'all'
                   ? 'bg-accent/20 border-accent/40 text-accent-foreground'
                   : 'bg-card/40 border-border text-muted-foreground hover:bg-card/60'
                 }
               `}
             >
-              {label}
+              Все
             </button>
-          ))}
+            {seasons.map(s => (
+              <button
+                key={s.id}
+                onClick={() => onSeasonChange(s.id)}
+                className={`
+                  px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 border
+                  ${activeSeason === s.id
+                    ? 'bg-accent/20 border-accent/40 text-accent-foreground'
+                    : 'bg-card/40 border-border text-muted-foreground hover:bg-card/60'
+                  }
+                `}
+              >
+                {s.name}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

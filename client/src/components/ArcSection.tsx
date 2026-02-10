@@ -62,9 +62,9 @@ export const ArcSection = memo(function ArcSection({
                 src={arc.image}
                 alt=""
                 loading="lazy"
-                className="absolute inset-0 w-full h-full object-cover opacity-15 group-hover:opacity-20 transition-opacity duration-300"
+                className="absolute inset-0 w-full h-full object-cover opacity-25 group-hover:opacity-35 transition-opacity duration-300"
               />
-              <div className="absolute inset-0 bg-gradient-to-r from-background/80 via-background/60 to-background/40" />
+              <div className="absolute inset-0 bg-gradient-to-r from-background/70 via-background/50 to-background/30" />
             </>
           )}
           {/* Batch checkbox */}

@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { EPISODES, WATCH_MODES, SOURCE_URL, SOURCE_AUTHOR, type MarkerType } from '@/lib/data';
-import { ARCS } from '@/lib/arcs';
+import type { MarkerType } from '@/lib/data';
+import type { SeriesConfig } from '@/lib/series-config';
 import { groupEpisodesByArcs } from '@/lib/arc-utils';
 import { getProgressFromURL, decodeProgress, clearProgressFromURL } from '@/lib/progress-sharing';
 import { FilterPanel } from '@/components/FilterPanel';
@@ -14,20 +14,22 @@ import { ShareButton } from '@/components/ShareButton';
 import { useSpoilerMode } from '@/hooks/useSpoilerMode';
 import { useCollapsedArcs } from '@/hooks/useCollapsedArcs';
 import { useDebounce } from '@/hooks/useDebounce';
-import { EyeOff, Eye, BookOpen, ExternalLink, ChevronDown, Download, Combine, X } from 'lucide-react';
+import { usePWAInstall } from '@/hooks/usePWAInstall';
+import { EyeOff, Eye, BookOpen, ExternalLink, ChevronDown, Download, Combine, X, Smartphone } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const WATCHED_STORAGE_KEY = 'naruto-watched';
-const DEFAULT_MODE = 'golden';
-
-function getModeFromURL(): string {
-  const params = new URLSearchParams(window.location.search);
-  return params.get('mode') || DEFAULT_MODE;
+interface HomeProps {
+  config: SeriesConfig;
 }
 
-function setModeInURL(mode: string) {
+function getModeFromURL(defaultModeId: string): string {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('mode') || defaultModeId;
+}
+
+function setModeInURL(mode: string, defaultModeId: string) {
   const url = new URL(window.location.href);
-  if (mode === DEFAULT_MODE) {
+  if (mode === defaultModeId) {
     url.searchParams.delete('mode');
   } else {
     url.searchParams.set('mode', mode);
@@ -35,48 +37,54 @@ function setModeInURL(mode: string) {
   window.history.replaceState({}, '', url.pathname + url.search);
 }
 
-function loadWatched(): Set<number> {
+function loadWatched(storageKey: string): Set<number> {
   try {
-    const saved = localStorage.getItem(WATCHED_STORAGE_KEY);
+    const saved = localStorage.getItem(storageKey);
     if (saved) return new Set(JSON.parse(saved) as number[]);
   } catch {}
   return new Set();
 }
 
-function saveWatched(watched: Set<number>) {
+function saveWatched(storageKey: string, watched: Set<number>) {
   try {
-    localStorage.setItem(WATCHED_STORAGE_KEY, JSON.stringify([...watched]));
+    localStorage.setItem(storageKey, JSON.stringify([...watched]));
   } catch {}
 }
 
-export default function Home() {
-  const [activeMode, setActiveModeState] = useState(getModeFromURL);
+export default function Home({ config }: HomeProps) {
+  const [activeMode, setActiveModeState] = useState(() => getModeFromURL(config.defaultModeId));
 
   const setActiveMode = useCallback((mode: string) => {
     setActiveModeState(mode);
-    setModeInURL(mode);
-  }, []);
-  const [activeSeason, setActiveSeason] = useState<'all' | 1 | 2>('all');
-  const [watched, setWatched] = useState<Set<number>>(loadWatched);
+    setModeInURL(mode, config.defaultModeId);
+  }, [config.defaultModeId]);
+  const [activeSeason, setActiveSeason] = useState<'all' | number>('all');
+  const [watched, setWatched] = useState<Set<number>>(() => loadWatched(config.storageKeys.watched));
   const [searchInput, setSearchInput] = useState('');
   const [importDialog, setImportDialog] = useState<{ watched: Set<number> } | null>(null);
   const searchQuery = useDebounce(searchInput, 300);
-  const { spoilersHidden, toggleSpoilers } = useSpoilerMode();
-  const { isCollapsed, toggleArc, expandAll } = useCollapsedArcs();
+  const { spoilersHidden, toggleSpoilers } = useSpoilerMode(config.storageKeys.spoilerMode);
+  const { isCollapsed, toggleArc, expandAll } = useCollapsedArcs(config.storageKeys.collapsedArcs);
   const contentRef = useRef<HTMLDivElement>(null);
+  const { canInstall, promptInstall } = usePWAInstall();
 
-  const currentMode = WATCH_MODES.find(m => m.id === activeMode) || WATCH_MODES[0];
+  const currentMode = config.watchModes.find(m => m.id === activeMode) || config.watchModes[0];
+
+  // Update document title
+  useEffect(() => {
+    document.title = config.fullTitle;
+  }, [config.fullTitle]);
 
   // Check URL for shared progress on mount
   useEffect(() => {
-    const encoded = getProgressFromURL();
+    const encoded = getProgressFromURL(config.progressUrlParam);
     if (encoded) {
-      const imported = decodeProgress(encoded);
+      const imported = decodeProgress(encoded, config.maxEpisodeId);
       if (imported.size > 0) {
         setImportDialog({ watched: imported });
       }
     }
-  }, []);
+  }, [config.progressUrlParam, config.maxEpisodeId]);
 
   const handleImport = useCallback((mode: 'replace' | 'merge') => {
     if (!importDialog) return;
@@ -87,37 +95,37 @@ export default function Home() {
       } else {
         next = new Set([...prev, ...importDialog.watched]);
       }
-      saveWatched(next);
+      saveWatched(config.storageKeys.watched, next);
       return next;
     });
     setImportDialog(null);
-    clearProgressFromURL();
-  }, [importDialog]);
+    clearProgressFromURL(config.progressUrlParam);
+  }, [importDialog, config.storageKeys.watched, config.progressUrlParam]);
 
   const handleDismissImport = useCallback(() => {
     setImportDialog(null);
-    clearProgressFromURL();
-  }, []);
+    clearProgressFromURL(config.progressUrlParam);
+  }, [config.progressUrlParam]);
 
   // Filter episodes by mode and season
   const filteredEpisodes = useMemo(() => {
-    return EPISODES.filter(ep => {
+    return config.episodes.filter(ep => {
       if (!currentMode.markers.includes(ep.marker as MarkerType)) return false;
       if (activeSeason !== 'all' && ep.season !== activeSeason) return false;
       return true;
     });
-  }, [activeMode, activeSeason, currentMode.markers]);
+  }, [config.episodes, activeMode, activeSeason, currentMode.markers]);
 
   // Build episode-to-arc map for search
   const episodeToArc = useMemo(() => {
     const map = new Map<number, string>();
-    for (const arc of ARCS) {
+    for (const arc of config.arcs) {
       for (const id of arc.episodeIds) {
         map.set(id, arc.name);
       }
     }
     return map;
-  }, []);
+  }, [config.arcs]);
 
   // Apply search filter
   const searchedEpisodes = useMemo(() => {
@@ -135,8 +143,8 @@ export default function Home() {
 
   // Group by arcs
   const arcGroups = useMemo(() => {
-    return groupEpisodesByArcs(ARCS, searchedEpisodes, activeSeason === 'all' ? undefined : activeSeason);
-  }, [searchedEpisodes, activeSeason]);
+    return groupEpisodesByArcs(config.arcs, searchedEpisodes, activeSeason === 'all' ? undefined : activeSeason);
+  }, [config.arcs, searchedEpisodes, activeSeason]);
 
   const visibleEpisodeIds = useMemo(() => {
     return new Set(searchedEpisodes.map(e => e.id));
@@ -154,10 +162,10 @@ export default function Home() {
       } else {
         next.add(id);
       }
-      saveWatched(next);
+      saveWatched(config.storageKeys.watched, next);
       return next;
     });
-  }, []);
+  }, [config.storageKeys.watched]);
 
   const batchToggle = useCallback((ids: number[], state: boolean) => {
     setWatched(prev => {
@@ -166,10 +174,10 @@ export default function Home() {
         if (state) next.add(id);
         else next.delete(id);
       }
-      saveWatched(next);
+      saveWatched(config.storageKeys.watched, next);
       return next;
     });
-  }, []);
+  }, [config.storageKeys.watched]);
 
   const scrollToContent = () => {
     contentRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -180,10 +188,23 @@ export default function Home() {
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, []);
 
-  // Season breaks for rendering
-  const season1Arcs = arcGroups.filter(g => g.arc.season === 1);
-  const season2Arcs = arcGroups.filter(g => g.arc.season === 2);
-  const showSeasonHeaders = activeSeason === 'all' && season1Arcs.length > 0 && season2Arcs.length > 0;
+  // Dynamic season grouping
+  const seasonGroups = useMemo(() => {
+    if (activeSeason !== 'all') {
+      const season = config.seasons.find(s => s.id === activeSeason);
+      if (season) return [{ season, arcs: arcGroups }];
+      return [{ season: config.seasons[0], arcs: arcGroups }];
+    }
+    return config.seasons
+      .map(season => ({
+        season,
+        arcs: arcGroups.filter(g => g.arc.season === season.id),
+      }))
+      .filter(g => g.arcs.length > 0);
+  }, [arcGroups, activeSeason, config.seasons]);
+
+  const showSeasonHeaders = seasonGroups.length > 1 ||
+    (seasonGroups.length === 1 && activeSeason !== 'all');
 
   return (
     <div className="min-h-screen bg-background">
@@ -242,7 +263,7 @@ export default function Home() {
       <section className="relative h-[85vh] min-h-[500px] max-h-[900px] flex items-end overflow-hidden">
         <div className="absolute inset-0">
           <img
-            src="/images/naruto-hero.jpg"
+            src={config.hero.image}
             alt=""
             className="w-full h-full object-cover object-top"
           />
@@ -260,18 +281,17 @@ export default function Home() {
             <div className="flex items-center gap-2 mb-4">
               <BookOpen className="w-5 h-5 text-primary" />
               <span className="text-sm font-display font-semibold text-primary uppercase tracking-wider">
-                Ультимативный гайд
+                {config.hero.badgeText}
               </span>
             </div>
 
             <h1 className="font-display font-bold text-foreground leading-none mb-2">
-              <span className="text-5xl sm:text-7xl block">Наруто</span>
-              <span className="text-4xl sm:text-6xl block text-primary mt-1">Гайд по просмотру</span>
+              <span className="text-5xl sm:text-7xl block">{config.hero.title}</span>
+              <span className="text-4xl sm:text-6xl block text-primary mt-1">{config.hero.subtitle}</span>
             </h1>
 
             <p className="text-base sm:text-lg text-muted-foreground mt-6 max-w-lg leading-relaxed">
-              Все 720 серий, 11 фильмов и 13 ОВА — с маркировкой по важности,
-              хронологическим порядком и интерактивным трекером прогресса.
+              {config.hero.description}
             </p>
 
             <div className="flex flex-wrap items-center gap-3 mt-8">
@@ -280,17 +300,28 @@ export default function Home() {
                 className="flex items-center gap-2 px-6 py-3 rounded-xl bg-primary text-primary-foreground font-display font-semibold text-sm hover:brightness-110 transition-all glow-orange"
               >
                 <BookOpen className="w-4 h-4" />
-                Начать просмотр
+                {config.hero.ctaText}
               </button>
-              <a
-                href={SOURCE_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 px-6 py-3 rounded-xl border border-border bg-card/30 backdrop-blur-sm text-foreground font-display font-semibold text-sm hover:bg-card/50 transition-all"
-              >
-                <ExternalLink className="w-4 h-4" />
-                Оригинал гайда
-              </a>
+              {config.sourceUrl && (
+                <a
+                  href={config.sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-6 py-3 rounded-xl border border-border bg-card/30 backdrop-blur-sm text-foreground font-display font-semibold text-sm hover:bg-card/50 transition-all"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  Оригинал гайда
+                </a>
+              )}
+              {canInstall && (
+                <button
+                  onClick={promptInstall}
+                  className="flex items-center gap-2 px-6 py-3 rounded-xl border border-border bg-card/30 backdrop-blur-sm text-foreground font-display font-semibold text-sm hover:bg-card/50 transition-all"
+                >
+                  <Smartphone className="w-4 h-4" />
+                  Установить приложение
+                </button>
+              )}
             </div>
           </motion.div>
 
@@ -306,11 +337,11 @@ export default function Home() {
       </section>
 
       {/* ===== STICKY HEADER ===== */}
-      <header ref={contentRef} className="sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border">
+      <header ref={contentRef} className="sticky top-10 z-50 bg-background/80 backdrop-blur-lg border-b border-border">
         <div className="container mx-auto py-3">
           <div className="flex items-center gap-3">
             <h2 className="text-lg font-display font-bold text-foreground shrink-0">
-              Наруто: Гайд
+              {config.stickyHeaderTitle}
             </h2>
             <span className="hidden sm:inline text-xs text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-md shrink-0">
               {currentMode.name}
@@ -319,7 +350,22 @@ export default function Home() {
               <SearchBar value={searchInput} onChange={setSearchInput} />
             </div>
             <div className="flex items-center gap-2 ml-auto shrink-0">
-              <ShareButton watched={watched} />
+              {canInstall && (
+                <button
+                  onClick={promptInstall}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border border-border bg-card/40 hover:bg-card/60 transition-colors text-muted-foreground"
+                  title="Установить приложение"
+                >
+                  <Smartphone className="w-4 h-4" />
+                  <span className="hidden sm:inline">Установить</span>
+                </button>
+              )}
+              <ShareButton
+                watched={watched}
+                maxEpisodeId={config.maxEpisodeId}
+                progressParam={config.progressUrlParam}
+                seriesParam={config.seriesUrlParam}
+              />
               <button
                 onClick={toggleSpoilers}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border border-border bg-card/40 hover:bg-card/60 transition-colors text-muted-foreground"
@@ -339,10 +385,12 @@ export default function Home() {
 
       {/* ===== MAIN CONTENT ===== */}
       <main className="relative">
-        <div
-          className="absolute inset-0 opacity-[0.03] pointer-events-none"
-          style={{ backgroundImage: 'url(/images/naruto-pattern.jpg)', backgroundSize: '600px', backgroundRepeat: 'repeat' }}
-        />
+        {config.hero.patternImage && (
+          <div
+            className="absolute inset-0 opacity-[0.03] pointer-events-none"
+            style={{ backgroundImage: `url(${config.hero.patternImage})`, backgroundSize: '600px', backgroundRepeat: 'repeat' }}
+          />
+        )}
 
         <div className="relative container mx-auto py-8 space-y-8">
           {/* Progress */}
@@ -352,7 +400,7 @@ export default function Home() {
             viewport={{ once: true }}
             transition={{ duration: 0.5 }}
           >
-            <ProgressBar watched={watchedInFiltered} total={filteredEpisodes.length} />
+            <ProgressBar watched={watchedInFiltered} total={filteredEpisodes.length} label={config.progressBarLabel} />
           </motion.div>
 
           {/* Arc Timeline */}
@@ -363,8 +411,8 @@ export default function Home() {
             transition={{ duration: 0.5, delay: 0.05 }}
           >
             <ArcTimeline
-              arcs={ARCS}
-              episodes={EPISODES}
+              arcs={config.arcs}
+              episodes={config.episodes}
               watched={watched}
               visibleEpisodeIds={visibleEpisodeIds}
               onArcClick={handleArcClick}
@@ -383,6 +431,8 @@ export default function Home() {
               onModeChange={setActiveMode}
               activeSeason={activeSeason}
               onSeasonChange={setActiveSeason}
+              watchModes={config.watchModes}
+              seasons={config.seasons}
             />
           </motion.div>
 
@@ -401,69 +451,17 @@ export default function Home() {
 
           {/* ===== ARC-GROUPED EPISODE LIST ===== */}
           <div className="space-y-2">
-            {showSeasonHeaders ? (
-              <>
-                {/* Season 1 */}
-                <SeasonHeader
-                  title="Сезон 1: Наруто"
-                  subtitle="Серии 1–220"
-                  image="/images/naruto-season1.jpg"
-                />
-                {season1Arcs.map(({ arc, episodes }) => (
-                  <ArcSection
-                    key={arc.id}
-                    arc={arc}
-                    episodes={episodes}
-                    watched={watched}
-                    onToggle={toggleWatched}
-                    onBatchToggle={batchToggle}
-                    spoilersHidden={spoilersHidden}
-                    isCollapsed={searchQuery ? false : isCollapsed(arc.id)}
-                    onToggleCollapse={() => toggleArc(arc.id)}
-                    searchQuery={searchQuery}
-                  />
-                ))}
-
-                {/* Season 2 */}
-                <div className="pt-6">
+            {seasonGroups.map((group, index) => (
+              <div key={group.season.id}>
+                {index > 0 && <div className="pt-6" />}
+                {showSeasonHeaders && group.season.image && (
                   <SeasonHeader
-                    title="Сезон 2: Ураганные Хроники"
-                    subtitle="Серии 1–500"
-                    image="/images/naruto-season2.jpg"
-                  />
-                </div>
-                {season2Arcs.map(({ arc, episodes }) => (
-                  <ArcSection
-                    key={arc.id}
-                    arc={arc}
-                    episodes={episodes}
-                    watched={watched}
-                    onToggle={toggleWatched}
-                    onBatchToggle={batchToggle}
-                    spoilersHidden={spoilersHidden}
-                    isCollapsed={searchQuery ? false : isCollapsed(arc.id)}
-                    onToggleCollapse={() => toggleArc(arc.id)}
-                    searchQuery={searchQuery}
-                  />
-                ))}
-              </>
-            ) : (
-              <>
-                {activeSeason === 1 && (
-                  <SeasonHeader
-                    title="Сезон 1: Наруто"
-                    subtitle="Серии 1–220"
-                    image="/images/naruto-season1.jpg"
+                    title={group.season.name}
+                    subtitle={group.season.subtitle}
+                    image={group.season.image}
                   />
                 )}
-                {activeSeason === 2 && (
-                  <SeasonHeader
-                    title="Сезон 2: Ураганные Хроники"
-                    subtitle="Серии 1–500"
-                    image="/images/naruto-season2.jpg"
-                  />
-                )}
-                {arcGroups.map(({ arc, episodes }) => (
+                {group.arcs.map(({ arc, episodes }) => (
                   <ArcSection
                     key={arc.id}
                     arc={arc}
@@ -477,8 +475,8 @@ export default function Home() {
                     searchQuery={searchQuery}
                   />
                 ))}
-              </>
-            )}
+              </div>
+            ))}
 
             {searchQuery && arcGroups.length === 0 && (
               <div className="text-center py-12 text-muted-foreground">
@@ -492,18 +490,22 @@ export default function Home() {
 
       {/* ===== FOOTER ===== */}
       <footer className="relative border-t border-border mt-12">
-        <div
-          className="absolute inset-0 opacity-[0.02] pointer-events-none"
-          style={{ backgroundImage: 'url(/images/naruto-pattern.jpg)', backgroundSize: '600px', backgroundRepeat: 'repeat' }}
-        />
+        {config.hero.patternImage && (
+          <div
+            className="absolute inset-0 opacity-[0.02] pointer-events-none"
+            style={{ backgroundImage: `url(${config.hero.patternImage})`, backgroundSize: '600px', backgroundRepeat: 'repeat' }}
+          />
+        )}
         <div className="relative container mx-auto py-8 text-center text-sm text-muted-foreground space-y-2">
-          <p>
-            Данные взяты из{' '}
-            <a href={SOURCE_URL} target="_blank" rel="noopener noreferrer" className="text-accent hover:text-accent/80 underline underline-offset-2 transition-colors">
-              гайда на Shikimori
-            </a>
-            {' '}от {SOURCE_AUTHOR}
-          </p>
+          {config.sourceUrl && config.sourceAuthor && (
+            <p>
+              Данные взяты из{' '}
+              <a href={config.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-accent hover:text-accent/80 underline underline-offset-2 transition-colors">
+                гайда на Shikimori
+              </a>
+              {' '}от {config.sourceAuthor}
+            </p>
+          )}
         </div>
       </footer>
     </div>
