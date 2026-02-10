@@ -2,7 +2,7 @@
  * StatsPanel — статистика по типам серий и время просмотра
  */
 import type { Episode } from '@/lib/data';
-import { calculateViewingTime, formatViewingTime } from '@/lib/arc-utils';
+import { parseEpisodeCount, calculateViewingTime, formatViewingTime } from '@/lib/arc-utils';
 import { Tv, Film, Clapperboard, Clock } from 'lucide-react';
 
 interface StatsPanelProps {
@@ -10,20 +10,25 @@ interface StatsPanelProps {
   watchedCount: number;
 }
 
+function countEpisodes(episodes: Episode[], type?: Episode['type']): number {
+  const filtered = type ? episodes.filter(e => e.type === type) : episodes;
+  return filtered.reduce((sum, e) => sum + parseEpisodeCount(e.episodes), 0);
+}
+
 const cardClass = "bg-card/40 border border-border/50 rounded-lg p-3 flex flex-col items-center justify-center text-center";
 
 export function StatsPanel({ filteredEpisodes, watchedCount }: StatsPanelProps) {
-  const total = filteredEpisodes.length;
-  const series = filteredEpisodes.filter(e => e.type === 'series').length;
-  const films = filteredEpisodes.filter(e => e.type === 'film').length;
-  const ovas = filteredEpisodes.filter(e => e.type === 'ova').length;
+  const total = countEpisodes(filteredEpisodes);
+  const series = countEpisodes(filteredEpisodes, 'series');
+  const films = countEpisodes(filteredEpisodes, 'film');
+  const ovas = countEpisodes(filteredEpisodes, 'ova');
   const viewingTime = calculateViewingTime(filteredEpisodes);
 
   return (
     <div className="grid grid-cols-5 gap-2 sm:gap-3">
       <div className={cardClass}>
         <div className="text-2xl font-display font-bold text-primary">{total}</div>
-        <div className="text-xs text-muted-foreground mt-1">Всего записей</div>
+        <div className="text-xs text-muted-foreground mt-1">Всего</div>
       </div>
       <div className={cardClass}>
         <div className="flex items-center justify-center gap-1.5">
