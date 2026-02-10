@@ -337,7 +337,7 @@ export default function Home({ config }: HomeProps) {
       </section>
 
       {/* ===== STICKY HEADER ===== */}
-      <header ref={contentRef} className="sticky top-10 z-50 bg-background/80 backdrop-blur-lg border-b border-border">
+      <header ref={contentRef} className="sticky top-12 z-50 bg-background/80 backdrop-blur-lg border-b border-border">
         <div className="container mx-auto py-3">
           <div className="flex items-center gap-3">
             <h2 className="text-lg font-display font-bold text-foreground shrink-0">

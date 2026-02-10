@@ -26,14 +26,6 @@ function getTypeIcon(type: Episode['type']) {
   }
 }
 
-function getTypeLabel(type: Episode['type']) {
-  switch (type) {
-    case 'film': return 'Фильм';
-    case 'ova': return 'ОВА';
-    default: return 'Серии';
-  }
-}
-
 function MarkerBadge({ marker }: { marker: MarkerType }) {
   const info = MARKERS[marker] || MARKERS['С'];
   return (
