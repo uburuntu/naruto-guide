@@ -5,48 +5,47 @@ import { RatingBadge } from '@/components/RatingBadge';
 import { EpisodeRow } from '@/components/EpisodeRow';
 import { ChevronDown, Clock, BookOpen } from 'lucide-react';
 import { type Arc, calculateViewingTime, formatViewingTime } from '@/lib/arc-utils';
-import type { Episode } from '@/lib/data';
+import { isWatched, type Item, type RouteRow } from '@/lib/watch-route';
 
 interface ArcSectionProps {
   arc: Arc;
-  episodes: Episode[];
-  watched: Set<number>;
-  onToggle: (id: number) => void;
-  onBatchToggle: (ids: number[], state: boolean) => void;
+  sectionId: string;
+  episodes: RouteRow[];
+  watched: Set<string>;
+  onBatchToggle: (items: Item[], state: boolean) => void;
   spoilersHidden: boolean;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
-  searchQuery?: string;
 }
 
 export const ArcSection = memo(function ArcSection({
   arc,
   episodes,
   watched,
-  onToggle,
+  sectionId,
   onBatchToggle,
   spoilersHidden,
   isCollapsed,
   onToggleCollapse,
 }: ArcSectionProps) {
-  const visibleIds = episodes.map(ep => ep.id);
-  const total = episodes.length;
-  const watchedCount = visibleIds.filter(id => watched.has(id)).length;
+  const items = episodes.flatMap(ep => ep.items);
+  const total = items.length;
+  const watchedCount = items.filter(item => isWatched(watched, item)).length;
   const percentage = total > 0 ? Math.round((watchedCount / total) * 100) : 0;
-  const viewingTime = calculateViewingTime(episodes);
+  const viewingTime = calculateViewingTime(episodes.filter(row => !row.items[0].scene));
   const allWatched = watchedCount === total && total > 0;
   const someWatched = watchedCount > 0 && !allWatched;
 
   const handleBatchToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
-    onBatchToggle(visibleIds, !allWatched);
+    onBatchToggle(items, !allWatched);
   };
 
   return (
     <Collapsible open={!isCollapsed} onOpenChange={() => onToggleCollapse()}>
       <CollapsibleTrigger asChild>
         <div
-          id={`arc-${arc.id}`}
+          id={`arc-${sectionId}`}
           className={`
             group relative flex items-center gap-3 p-3 sm:p-4 rounded-lg border cursor-pointer transition-all duration-200 overflow-hidden
             ${allWatched
@@ -96,11 +95,11 @@ export const ArcSection = memo(function ArcSection({
 
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
               <span className="text-xs text-muted-foreground">
-                {watchedCount}/{total} записей
+                {watchedCount}/{total}
               </span>
               <span className="text-xs text-muted-foreground/60 flex items-center gap-1">
                 <Clock className="w-3 h-3" />
-                ~{formatViewingTime(viewingTime)}
+                ~{formatViewingTime(viewingTime)}{items.some(item => item.scene) && ' + вставки'}
               </span>
               {/* Mini progress bar */}
               <div className="hidden sm:block w-20 h-1.5 bg-muted rounded-full overflow-hidden">
@@ -126,11 +125,10 @@ export const ArcSection = memo(function ArcSection({
         <div className="space-y-1.5 mt-1.5 pl-2 sm:pl-4 border-l-2 border-border/30 ml-4">
           {episodes.map(episode => (
             <EpisodeRow
-              key={episode.id}
+              key={episode.items[0].key}
               episode={episode}
-              isWatched={watched.has(episode.id)}
-              onToggle={onToggle}
-              isVisible={true}
+              watched={watched}
+              onToggle={onBatchToggle}
               spoilersHidden={spoilersHidden}
             />
           ))}

@@ -25,7 +25,7 @@ test('text searches still match labels, titles, notes and arc names', () => {
     ['Серия 70', 'Серия 70'],
     ['другая сторона', 'Серия 70'],
     ['переделку фильма', 'Серии 53-66'],
-    ['филлеры после экзамена', 'Серия 70'],
+    ['экзамен на чунина', 'Серия 70'],
   ]) {
     assert.ok(searchEpisodes(boruto.episodes, query, borutoArcs).some(ep => ep.episodes === expectedLabel));
   }

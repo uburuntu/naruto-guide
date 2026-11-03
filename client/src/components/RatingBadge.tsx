@@ -14,12 +14,12 @@ function getRatingColor(rating: number): string {
 export function RatingBadge({ rating }: RatingBadgeProps) {
   const color = getRatingColor(rating);
   return (
-    <span
+    <span title="Оценка из ранней версии гайда. Источник не указан."
       className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-bold font-display"
       style={{ color, backgroundColor: color + '1a' }}
     >
       <Star className="w-3 h-3 fill-current" />
-      {rating.toFixed(1)}
+      {rating.toFixed(1)} · оценка гайда
     </span>
   );
 }

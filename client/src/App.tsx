@@ -21,6 +21,8 @@ function Router() {
       url.searchParams.set('s', series);
     }
     url.searchParams.delete('mode');
+    url.searchParams.delete('extras');
+    url.searchParams.delete('recaps');
     url.searchParams.delete('p');
     url.searchParams.delete('bp');
     window.history.replaceState({}, '', url.pathname + (url.search || ''));

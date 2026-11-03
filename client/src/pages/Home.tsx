@@ -1,8 +1,11 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import type { MarkerType } from '@/lib/data';
+import { RouteCheckpoint } from '@/components/RouteCheckpoint';
+import { buildRoute, extraChoices, groupRoute, isWatched, itemLabel, markItems, routeSummary, type Item } from '@/lib/watch-route';
+import { loadWatchProgress, decodeWatchProgress, encodeWatchProgress } from '@/lib/watch-progress';
+import { readSettings, setRouteParams, type RouteSettings } from '@/lib/route-settings';
 import type { SeriesConfig } from '@/lib/series-config';
-import { buildEpisodeToArcMap, groupEpisodesByArcs, searchEpisodes } from '@/lib/arc-utils';
-import { getProgressFromURL, decodeProgress, clearProgressFromURL } from '@/lib/progress-sharing';
+import { buildEpisodeToArcMap, searchEpisodes } from '@/lib/arc-utils';
+import { getProgressFromURL, clearProgressFromURL } from '@/lib/progress-sharing';
 import { FilterPanel } from '@/components/FilterPanel';
 import { StatsPanel } from '@/components/StatsPanel';
 import { ProgressBar } from '@/components/ProgressBar';
@@ -22,49 +25,23 @@ interface HomeProps {
   config: SeriesConfig;
 }
 
-function getModeFromURL(defaultModeId: string): string {
-  const params = new URLSearchParams(window.location.search);
-  return params.get('mode') || defaultModeId;
-}
-
-function setModeInURL(mode: string, defaultModeId: string) {
-  const url = new URL(window.location.href);
-  if (mode === defaultModeId) {
-    url.searchParams.delete('mode');
-  } else {
-    url.searchParams.set('mode', mode);
-  }
-  window.history.replaceState({}, '', url.pathname + url.search);
-}
-
-function loadWatched(storageKey: string): Set<number> {
-  try {
-    const saved = localStorage.getItem(storageKey);
-    if (saved) return new Set(JSON.parse(saved) as number[]);
-  } catch {}
-  return new Set();
-}
-
-function saveWatched(storageKey: string, watched: Set<number>) {
-  try {
-    localStorage.setItem(storageKey, JSON.stringify([...watched]));
-  } catch {}
-}
-
 export default function Home({ config }: HomeProps) {
-  const [activeMode, setActiveModeState] = useState(() => getModeFromURL(config.defaultModeId));
-
-  const setActiveMode = useCallback((mode: string) => {
-    setActiveModeState(mode);
-    setModeInURL(mode, config.defaultModeId);
-  }, [config.defaultModeId]);
+  const [settings, setSettings] = useState(() => readSettings(config));
+  const activeMode = settings.mode;
+  function changeSettings(next: RouteSettings) {
+    setSettings(next);
+    const url = new URL(window.location.href);
+    setRouteParams(url, next);
+    window.history.replaceState(window.history.state, '', url);
+    try { localStorage.setItem(config.id + '-route', JSON.stringify(next)); } catch {}
+  }
   const [activeSeason, setActiveSeason] = useState<'all' | number>('all');
-  const [watched, setWatched] = useState<Set<number>>(() => loadWatched(config.storageKeys.watched));
+  const [watched, setWatched] = useState(() => loadWatchProgress(config));
   const [searchInput, setSearchInput] = useState('');
-  const [importDialog, setImportDialog] = useState<{ watched: Set<number> } | null>(null);
+  const [importDialog, setImportDialog] = useState<{ watched: Set<string> } | null>(null);
   const searchQuery = useDebounce(searchInput, 300);
   const { spoilersHidden, toggleSpoilers } = useSpoilerMode(config.storageKeys.spoilerMode);
-  const { isCollapsed, toggleArc, expandAll } = useCollapsedArcs(config.storageKeys.collapsedArcs);
+  const { isCollapsed, toggleArc } = useCollapsedArcs(config.storageKeys.collapsedArcs);
   const contentRef = useRef<HTMLDivElement>(null);
   const { canInstall, promptInstall } = usePWAInstall();
 
@@ -79,88 +56,75 @@ export default function Home({ config }: HomeProps) {
   useEffect(() => {
     const encoded = getProgressFromURL(config.progressUrlParam);
     if (encoded) {
-      const imported = decodeProgress(encoded, config.maxEpisodeId);
+      const imported = decodeWatchProgress(encoded, config);
       if (imported.size > 0) {
         setImportDialog({ watched: imported });
       }
     }
-  }, [config.progressUrlParam, config.maxEpisodeId]);
+  }, [config]);
 
   const handleDismissImport = useCallback(() => {
     setImportDialog(null);
     clearProgressFromURL(config.progressUrlParam, config.seriesUrlParam);
   }, [config.progressUrlParam, config.seriesUrlParam]);
 
-  const handleImport = useCallback((mode: 'replace' | 'merge') => {
+  function writeWatched(next: Set<string>) {
+    setWatched(next);
+    try { localStorage.setItem(config.storageKeys.watched + '-v2', encodeWatchProgress(next)); } catch {}
+  }
+
+  useEffect(() => {
+    const key = config.storageKeys.watched;
+    function sync(event: StorageEvent) {
+      if (event.key === null || event.key === key || event.key === key + '-v2') setWatched(loadWatchProgress(config));
+    }
+    window.addEventListener('storage', sync);
+    return () => window.removeEventListener('storage', sync);
+  }, [config]);
+
+  function handleImport(action: 'replace' | 'merge') {
     if (!importDialog) return;
-    setWatched(prev => {
-      let next: Set<number>;
-      if (mode === 'replace') {
-        next = new Set(importDialog.watched);
-      } else {
-        next = new Set([...prev, ...importDialog.watched]);
-      }
-      saveWatched(config.storageKeys.watched, next);
-      return next;
-    });
+    writeWatched(action === 'replace' ? importDialog.watched : new Set([...watched, ...importDialog.watched]));
     handleDismissImport();
-  }, [importDialog, config.storageKeys.watched, handleDismissImport]);
+  }
 
-  // Filter episodes by mode and season
-  const filteredEpisodes = useMemo(() => {
-    return config.episodes.filter(ep => {
-      if (!currentMode.markers.includes(ep.marker as MarkerType)) return false;
-      if (activeSeason !== 'all' && ep.season !== activeSeason) return false;
-      return true;
-    });
-  }, [config.episodes, activeMode, activeSeason, currentMode.markers]);
+  const routes = useMemo(() => Object.fromEntries(config.watchModes.map(mode => {
+    const rows = buildRoute(config, mode, settings);
+    return [mode.id, activeSeason === 'all' ? rows : rows.filter(row => row.season === activeSeason)];
+  })), [config, settings, activeSeason]);
+  const filteredEpisodes = routes[activeMode];
+  const summaries = useMemo(() => Object.fromEntries(Object.entries(routes).map(([mode, rows]) =>
+    [mode, routeSummary(rows)])), [routes]);
+  const episodeToArc = useMemo(() => buildEpisodeToArcMap(config.arcs), [config]);
+  const searchedEpisodes = useMemo(() => searchEpisodes(filteredEpisodes, searchQuery, episodeToArc),
+    [filteredEpisodes, searchQuery, episodeToArc]);
+  const arcGroups = useMemo(() => groupRoute(searchedEpisodes, episodeToArc), [searchedEpisodes, episodeToArc]);
+  const items = useMemo(() => filteredEpisodes.flatMap(row => row.items), [filteredEpisodes]);
+  const watchedInFiltered = items.filter(item => isWatched(watched, item)).length;
+  const nextRow = filteredEpisodes.find(row => row.items.some(item => !isWatched(watched, item)));
+  const nextItem = nextRow?.items.find(item => !isWatched(watched, item));
+  const [jump, setJump] = useState('');
+  function continueRoute() {
+    if (!nextRow || !nextItem) return;
+    setSearchInput('');
+    const arc = episodeToArc.get(nextRow.id)!;
+    if (isCollapsed(arc.id)) toggleArc(arc.id);
+    setJump(nextItem.key);
+  }
+  useEffect(() => {
+    if (!jump || searchQuery) return;
+    const row = document.getElementById('episode-' + jump) ?? document.getElementById('row-' + jump);
+    if (!row) return;
+    const details = row.closest('details');
+    if (details) details.open = true;
+    row.focus({ preventScroll: true });
+    row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    setJump('');
+  }, [jump, searchQuery, arcGroups]);
 
-  // Build episode-to-arc map for search
-  const episodeToArc = useMemo(() => buildEpisodeToArcMap(config.arcs), [config.arcs]);
-
-  // Apply search filter
-  const searchedEpisodes = useMemo(
-    () => searchEpisodes(filteredEpisodes, searchQuery, episodeToArc),
-    [filteredEpisodes, searchQuery, episodeToArc]
-  );
-
-  // Group by arcs
-  const arcGroups = useMemo(() => {
-    return groupEpisodesByArcs(config.arcs, searchedEpisodes, activeSeason === 'all' ? undefined : activeSeason);
-  }, [config.arcs, searchedEpisodes, activeSeason]);
-
-  const visibleEpisodeIds = useMemo(() => {
-    return new Set(searchedEpisodes.map(e => e.id));
-  }, [searchedEpisodes]);
-
-  const watchedInFiltered = useMemo(() => {
-    return filteredEpisodes.filter(ep => watched.has(ep.id)).length;
-  }, [filteredEpisodes, watched]);
-
-  const toggleWatched = useCallback((id: number) => {
-    setWatched(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      saveWatched(config.storageKeys.watched, next);
-      return next;
-    });
-  }, [config.storageKeys.watched]);
-
-  const batchToggle = useCallback((ids: number[], state: boolean) => {
-    setWatched(prev => {
-      const next = new Set(prev);
-      for (const id of ids) {
-        if (state) next.add(id);
-        else next.delete(id);
-      }
-      saveWatched(config.storageKeys.watched, next);
-      return next;
-    });
-  }, [config.storageKeys.watched]);
+  function batchToggle(items: Item[], checked: boolean) {
+    writeWatched(markItems(watched, items, checked));
+  }
 
   const scrollToContent = () => {
     contentRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -213,7 +177,7 @@ export default function Home({ config }: HomeProps) {
                 </button>
               </div>
               <p className="text-sm text-muted-foreground mb-6">
-                Обнаружен прогресс из ссылки ({importDialog.watched.size} записей). Что сделать?
+                Обнаружен прогресс из ссылки ({importDialog.watched.size} отметок). Что сделать?
               </p>
               <div className="flex flex-col gap-2">
                 <button
@@ -279,11 +243,11 @@ export default function Home({ config }: HomeProps) {
 
             <div className="flex flex-wrap items-center gap-3 mt-8">
               <button
-                onClick={scrollToContent}
+                onClick={nextItem ? continueRoute : scrollToContent}
                 className="flex items-center gap-2 px-6 py-3 rounded-xl bg-primary text-primary-foreground font-display font-semibold text-sm hover:brightness-110 transition-all glow-orange"
               >
                 <BookOpen className="w-4 h-4" />
-                {config.hero.ctaText}
+                {nextRow && nextItem ? `${watchedInFiltered ? 'Продолжить' : 'Начать'} · ${itemLabel(nextRow, nextItem.number)}` : 'Маршрут пройден'}
               </button>
               {config.sourceUrl && (
                 <a
@@ -293,7 +257,7 @@ export default function Home({ config }: HomeProps) {
                   className="flex items-center gap-2 px-6 py-3 rounded-xl border border-border bg-card/30 backdrop-blur-sm text-foreground font-display font-semibold text-sm hover:bg-card/50 transition-all"
                 >
                   <ExternalLink className="w-4 h-4" />
-                  Оригинал гайда
+                  {config.id === 'boruto' ? 'Официальный каталог' : 'Оригинал гайда'}
                 </a>
               )}
               {canInstall && (
@@ -345,7 +309,7 @@ export default function Home({ config }: HomeProps) {
               )}
               <ShareButton
                 watched={watched}
-                maxEpisodeId={config.maxEpisodeId}
+                settings={settings}
                 progressParam={config.progressUrlParam}
                 seriesParam={config.seriesUrlParam}
               />
@@ -383,7 +347,8 @@ export default function Home({ config }: HomeProps) {
             viewport={{ once: true }}
             transition={{ duration: 0.5 }}
           >
-            <ProgressBar watched={watchedInFiltered} total={filteredEpisodes.length} label={config.progressBarLabel} />
+            <ProgressBar watched={watchedInFiltered} total={items.length} label={config.progressBarLabel} />
+            <RouteCheckpoint key={activeMode + activeSeason + settings.extras.join() + settings.recaps} rows={filteredEpisodes} seasons={config.seasons.filter(s => activeSeason === 'all' || s.id === activeSeason)} onMark={batchToggle} />
           </motion.div>
 
           {/* Arc Timeline */}
@@ -394,10 +359,8 @@ export default function Home({ config }: HomeProps) {
             transition={{ duration: 0.5, delay: 0.05 }}
           >
             <ArcTimeline
-              arcs={config.arcs}
-              episodes={config.episodes}
+              groups={arcGroups}
               watched={watched}
-              visibleEpisodeIds={visibleEpisodeIds}
               onArcClick={handleArcClick}
             />
           </motion.div>
@@ -411,12 +374,30 @@ export default function Home({ config }: HomeProps) {
           >
             <FilterPanel
               activeMode={activeMode}
-              onModeChange={setActiveMode}
+              onModeChange={mode => changeSettings({ ...settings, mode })}
+              summaries={summaries}
               activeSeason={activeSeason}
               onSeasonChange={setActiveSeason}
               watchModes={config.watchModes}
               seasons={config.seasons}
             />
+            {config.id === 'naruto' && activeMode === 'speedrun' && (
+              <fieldset className="mt-4 flex flex-wrap gap-3 text-sm">
+                <legend className="mb-2 text-muted-foreground">Дополнения к спидрану · посмотреть целиком</legend>
+                {extraChoices.map(choice => (
+                  <label key={choice.id} className="flex gap-2 items-center">
+                    <input type="checkbox" checked={settings.extras.includes(choice.id)} onChange={event =>
+                      changeSettings({ ...settings, extras: event.target.checked
+                        ? [...settings.extras, choice.id] : settings.extras.filter(id => id !== choice.id) })} />
+                    {choice.label}
+                  </label>
+                ))}
+              </fieldset>
+            )}
+            {config.id === 'naruto' && activeMode === 'survival' && (
+              <label className="mt-4 flex items-center gap-2 text-sm"><input type="checkbox" checked={settings.recaps}
+                onChange={event => changeSettings({ ...settings, recaps: event.target.checked })} />Включить шесть серий-повторок</label>
+            )}
           </motion.div>
 
           {/* Stats */}
@@ -426,11 +407,18 @@ export default function Home({ config }: HomeProps) {
             viewport={{ once: true }}
             transition={{ duration: 0.5, delay: 0.2 }}
           >
-            <StatsPanel filteredEpisodes={filteredEpisodes} watchedCount={watchedInFiltered} />
+            <StatsPanel filteredEpisodes={filteredEpisodes} />
           </motion.div>
 
           {/* Legend */}
           <MarkerLegend />
+          {config.id === 'naruto' && (
+            <details className="text-sm text-muted-foreground">
+              <summary className="cursor-pointer">О рекомендациях и озвучке</summary>
+              <p className="mt-2">Даинг Окаянный оценивает филлеры по личным впечатлениям. Новичкам он рекомендует «Стандарт» или «Золотой стандарт».</p>
+              <p className="mt-2">Автор предпочитает 2×2 для первого сезона и старую озвучку 2×2 для серий 1–318 второго. С 319-й серии — 2×2 New. Для фильмов 7–10 он отмечает Reanimedia, для 1, 2, 9 и 11 — Flarrow Films. Для ОВА в сети обычно доступны любительские версии.</p>
+            </details>
+          )}
 
           {/* ===== ARC-GROUPED EPISODE LIST ===== */}
           <div className="space-y-2">
@@ -444,18 +432,17 @@ export default function Home({ config }: HomeProps) {
                     image={group.season.image}
                   />
                 )}
-                {group.arcs.map(({ arc, episodes }) => (
+                {group.arcs.map(({ id, arc, episodes }) => (
                   <ArcSection
-                    key={arc.id}
+                    key={id}
+                    sectionId={id}
                     arc={arc}
                     episodes={episodes}
                     watched={watched}
-                    onToggle={toggleWatched}
                     onBatchToggle={batchToggle}
                     spoilersHidden={spoilersHidden}
                     isCollapsed={searchQuery ? false : isCollapsed(arc.id)}
                     onToggleCollapse={() => toggleArc(arc.id)}
-                    searchQuery={searchQuery}
                   />
                 ))}
               </div>
@@ -482,11 +469,11 @@ export default function Home({ config }: HomeProps) {
         <div className="relative container mx-auto py-8 text-center text-sm text-muted-foreground space-y-2">
           {config.sourceUrl && config.sourceAuthor && (
             <p>
-              Данные взяты из{' '}
+              {config.id === 'boruto' ? 'Границы арок — ' : 'Данные взяты из '}
               <a href={config.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-accent hover:text-accent/80 underline underline-offset-2 transition-colors">
-                гайда на Shikimori
+                {config.id === 'boruto' ? 'NARUTO OFFICIAL SITE' : 'гайда на Shikimori'}
               </a>
-              {' '}от {config.sourceAuthor}
+              {config.id === 'boruto' ? '. Маркеры — рекомендации гайда.' : ` от ${config.sourceAuthor}`}
             </p>
           )}
           <p>

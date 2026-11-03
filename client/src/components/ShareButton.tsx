@@ -1,15 +1,18 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Share2, Check } from 'lucide-react';
+import { encodeWatchProgress } from '@/lib/watch-progress';
 import { generateShareURL } from '@/lib/progress-sharing';
 
+import { setRouteParams, type RouteSettings } from '@/lib/route-settings';
+
 interface ShareButtonProps {
-  watched: Set<number>;
-  maxEpisodeId: number;
+  settings: RouteSettings;
+  watched: Set<string>;
   progressParam: string;
   seriesParam: string;
 }
 
-export function ShareButton({ watched, maxEpisodeId, progressParam, seriesParam }: ShareButtonProps) {
+export function ShareButton({ watched, progressParam, seriesParam, settings }: ShareButtonProps) {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -20,7 +23,9 @@ export function ShareButton({ watched, maxEpisodeId, progressParam, seriesParam 
   }, [copied]);
 
   const handleShare = useCallback(async () => {
-    const url = generateShareURL(watched, maxEpisodeId, progressParam, seriesParam);
+    const share = new URL(generateShareURL(watched.size ? encodeWatchProgress(watched) : null, progressParam, seriesParam));
+    setRouteParams(share, settings);
+    const url = share.href;
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
@@ -34,7 +39,7 @@ export function ShareButton({ watched, maxEpisodeId, progressParam, seriesParam 
       document.body.removeChild(textArea);
       setCopied(true);
     }
-  }, [watched, maxEpisodeId, progressParam, seriesParam]);
+  }, [watched, progressParam, seriesParam, settings]);
 
   return (
     <button

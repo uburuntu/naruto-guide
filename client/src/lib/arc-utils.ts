@@ -3,7 +3,7 @@ import type { Episode, MarkerType } from './data';
 export interface Arc {
   id: string;
   name: string;
-  description: string;
+  description?: string;
   season: number;
   episodeIds: number[];
   rating?: number;
@@ -15,7 +15,7 @@ const MINUTES_PER_EPISODE = 23;
 const MINUTES_PER_FILM = 90;
 const MINUTES_PER_OVA = 25;
 
-function getEpisodeRange(label: string): [number, number] | undefined {
+export function getEpisodeRange(label: string): [number, number] | undefined {
   const match = /^Сери[яи]\s+(\d+)(?:\s*[–-]\s*(\d+))?$/i.exec(label);
   if (match) return [Number(match[1]), Number(match[2] ?? match[1])];
 }
@@ -74,7 +74,7 @@ export function buildEpisodeToArcMap(arcs: Arc[]): Map<number, Arc> {
   return map;
 }
 
-export function searchEpisodes(episodes: Episode[], query: string, episodeToArc: Map<number, Arc>): Episode[] {
+export function searchEpisodes<T extends Episode>(episodes: T[], query: string, episodeToArc: Map<number, Arc>): T[] {
   const q = query.trim().toLowerCase();
   if (!q) return episodes;
 
@@ -91,85 +91,4 @@ export function searchEpisodes(episodes: Episode[], query: string, episodeToArc:
     [ep.title, ep.episodes, ep.note, episodeToArc.get(ep.id)?.name]
       .some(text => text?.toLowerCase().includes(q))
   );
-}
-
-/**
- * Get arc progress based on watched set.
- */
-export function getArcProgress(arc: Arc, watched: Set<number>): { watched: number; total: number; percentage: number } {
-  const total = arc.episodeIds.length;
-  let watchedCount = 0;
-  for (const id of arc.episodeIds) {
-    if (watched.has(id)) watchedCount++;
-  }
-  return {
-    watched: watchedCount,
-    total,
-    percentage: total > 0 ? Math.round((watchedCount / total) * 100) : 0,
-  };
-}
-
-/**
- * Get the dominant marker type for an arc (most common marker among its episodes).
- */
-export function getArcDominantMarker(arc: Arc, episodes: Episode[]): MarkerType {
-  const counts = new Map<MarkerType, number>();
-  const episodeMap = new Map(episodes.map(e => [e.id, e]));
-
-  for (const id of arc.episodeIds) {
-    const ep = episodeMap.get(id);
-    if (ep) {
-      counts.set(ep.marker, (counts.get(ep.marker) || 0) + 1);
-    }
-  }
-
-  let dominant: MarkerType = 'С';
-  let maxCount = 0;
-  for (const [marker, count] of counts) {
-    if (count > maxCount) {
-      maxCount = count;
-      dominant = marker;
-    }
-  }
-  return dominant;
-}
-
-/**
- * Get visible episode IDs for an arc given the current set of visible episodes.
- */
-export function getArcVisibleEpisodes(arc: Arc, visibleEpisodeIds: Set<number>): number[] {
-  return arc.episodeIds.filter(id => visibleEpisodeIds.has(id));
-}
-
-/**
- * Group episodes by their arcs, maintaining arc order.
- * Returns arcs that have at least one visible episode, along with their visible episodes.
- */
-export function groupEpisodesByArcs(
-  arcs: Arc[],
-  visibleEpisodes: Episode[],
-  season?: number
-): { arc: Arc; episodes: Episode[] }[] {
-  const visibleIds = new Set(visibleEpisodes.map(e => e.id));
-  const episodeMap = new Map(visibleEpisodes.map(e => [e.id, e]));
-
-  const result: { arc: Arc; episodes: Episode[] }[] = [];
-
-  for (const arc of arcs) {
-    if (season && arc.season !== season) continue;
-
-    const arcEpisodes: Episode[] = [];
-    for (const id of arc.episodeIds) {
-      const ep = episodeMap.get(id);
-      if (ep && visibleIds.has(id)) {
-        arcEpisodes.push(ep);
-      }
-    }
-
-    if (arcEpisodes.length > 0) {
-      result.push({ arc, episodes: arcEpisodes });
-    }
-  }
-
-  return result;
 }

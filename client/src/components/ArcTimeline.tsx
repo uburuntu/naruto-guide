@@ -1,75 +1,32 @@
-import { useMemo } from 'react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import type { Arc } from '@/lib/arc-utils';
-import { getArcDominantMarker } from '@/lib/arc-utils';
-import type { Episode } from '@/lib/data';
 import { MARKERS } from '@/lib/data';
+import { groupRoute, isWatched } from '@/lib/watch-route';
 
-interface ArcTimelineProps {
-  arcs: Arc[];
-  episodes: Episode[];
-  watched: Set<number>;
-  visibleEpisodeIds: Set<number>;
-  onArcClick: (arcId: string) => void;
+interface Props {
+  groups: ReturnType<typeof groupRoute>;
+  watched: Set<string>;
+  onArcClick: (sectionId: string) => void;
 }
 
-export function ArcTimeline({ arcs, episodes, watched, visibleEpisodeIds, onArcClick }: ArcTimelineProps) {
-  const visibleArcs = useMemo(() => {
-    return arcs.filter(arc => arc.episodeIds.some(id => visibleEpisodeIds.has(id)));
-  }, [arcs, visibleEpisodeIds]);
-
-  const totalEpisodes = useMemo(() => {
-    return visibleArcs.reduce((sum, arc) => {
-      return sum + arc.episodeIds.filter(id => visibleEpisodeIds.has(id)).length;
-    }, 0);
-  }, [visibleArcs, visibleEpisodeIds]);
-
-  if (visibleArcs.length === 0) return null;
-
+export function ArcTimeline({ groups, watched, onArcClick }: Props) {
+  if (!groups.length) return null;
   return (
-    <div className="w-full">
-      <h3 className="text-sm font-display font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-        Таймлайн
-      </h3>
-      <div className="relative flex gap-0.5 h-8 rounded-lg overflow-hidden bg-muted/30 border border-border/50">
-        {visibleArcs.map(arc => {
-          const arcVisibleIds = arc.episodeIds.filter(id => visibleEpisodeIds.has(id));
-          const visibleCount = arcVisibleIds.length;
-          const widthPercent = (visibleCount / totalEpisodes) * 100;
-          const watchedCount = arcVisibleIds.filter(id => watched.has(id)).length;
-          const percentage = visibleCount > 0 ? Math.round((watchedCount / visibleCount) * 100) : 0;
-          const dominant = getArcDominantMarker(arc, episodes);
-          const color = MARKERS[dominant]?.color || '#6b7280';
-
+    <div>
+      <h3 className="mb-2 text-sm font-display font-semibold text-muted-foreground uppercase">Таймлайн</h3>
+      <div className="flex gap-0.5 h-8 rounded-lg overflow-hidden bg-muted/30">
+        {groups.map(({ id, arc, episodes }) => {
+          const items = episodes.flatMap(row => row.items);
+          const seen = items.filter(item => isWatched(watched, item)).length;
           return (
-            <Tooltip key={arc.id}>
+            <Tooltip key={id}>
               <TooltipTrigger asChild>
-                <button
-                  onClick={() => onArcClick(arc.id)}
-                  className="relative h-full transition-opacity hover:opacity-80"
-                  style={{ width: `${Math.max(widthPercent, 1)}%`, minWidth: '4px' }}
-                >
-                  {/* Background (full bar) */}
-                  <div
-                    className="absolute inset-0 opacity-30"
-                    style={{ backgroundColor: color }}
-                  />
-                  {/* Watched fill */}
-                  <div
-                    className="absolute inset-y-0 left-0 transition-all duration-300"
-                    style={{
-                      width: `${percentage}%`,
-                      backgroundColor: color,
-                    }}
-                  />
+                <button aria-label={arc.name} onClick={() => onArcClick(id)} className="relative min-w-1"
+                  style={{ flex: items.length, color: MARKERS[episodes[0].marker].color }}>
+                  <span className="absolute inset-0 bg-current opacity-30" />
+                  <span className="absolute inset-y-0 left-0 bg-current" style={{ width: `${100 * seen / items.length}%` }} />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="bottom" className="max-w-[220px]">
-                <p className="font-display font-semibold text-sm">{arc.name}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {watchedCount}/{visibleCount} • {arc.rating ? `${arc.rating}/10` : 'Без рейтинга'}
-                </p>
-              </TooltipContent>
+              <TooltipContent><p>{arc.name}</p><p>{seen}/{items.length}</p></TooltipContent>
             </Tooltip>
           );
         })}
