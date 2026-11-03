@@ -65,21 +65,21 @@ export function generateShareURL(
   progressParam: string,
   seriesParam: string
 ): string {
-  const encoded = encodeProgress(watched, maxEpisodeId);
-  const base = window.location.origin + window.location.pathname;
-  if (seriesParam === 'naruto') {
-    return `${base}?${progressParam}=${encoded}`;
+  const url = new URL(window.location.pathname, window.location.origin);
+  if (seriesParam !== 'naruto') url.searchParams.set('s', seriesParam);
+  if (watched.size > 0 && maxEpisodeId > 0) {
+    url.searchParams.set(progressParam, encodeProgress(watched, maxEpisodeId));
   }
-  return `${base}?s=${seriesParam}&${progressParam}=${encoded}`;
+  return url.href;
 }
 
 /**
  * Remove the progress parameter from the URL without reload.
  */
-export function clearProgressFromURL(progressParam: string): void {
+export function clearProgressFromURL(progressParam: string, seriesParam: string): void {
   const url = new URL(window.location.href);
   url.searchParams.delete(progressParam);
-  url.searchParams.delete('s');
-  const search = url.searchParams.toString();
-  window.history.replaceState({}, '', url.pathname + (search ? `?${search}` : ''));
+  // Older Boruto links identify the series only through the progress parameter.
+  if (seriesParam !== 'naruto') url.searchParams.set('s', seriesParam);
+  window.history.replaceState(window.history.state, '', url);
 }

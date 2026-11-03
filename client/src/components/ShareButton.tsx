@@ -20,12 +20,7 @@ export function ShareButton({ watched, maxEpisodeId, progressParam, seriesParam 
   }, [copied]);
 
   const handleShare = useCallback(async () => {
-    let url: string;
-    if (watched.size === 0 || maxEpisodeId === 0) {
-      url = window.location.origin + window.location.pathname;
-    } else {
-      url = generateShareURL(watched, maxEpisodeId, progressParam, seriesParam);
-    }
+    const url = generateShareURL(watched, maxEpisodeId, progressParam, seriesParam);
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);

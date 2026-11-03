@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import type { MarkerType } from '@/lib/data';
 import type { SeriesConfig } from '@/lib/series-config';
-import { groupEpisodesByArcs } from '@/lib/arc-utils';
+import { buildEpisodeToArcMap, groupEpisodesByArcs, searchEpisodes } from '@/lib/arc-utils';
 import { getProgressFromURL, decodeProgress, clearProgressFromURL } from '@/lib/progress-sharing';
 import { FilterPanel } from '@/components/FilterPanel';
 import { StatsPanel } from '@/components/StatsPanel';
@@ -86,6 +86,11 @@ export default function Home({ config }: HomeProps) {
     }
   }, [config.progressUrlParam, config.maxEpisodeId]);
 
+  const handleDismissImport = useCallback(() => {
+    setImportDialog(null);
+    clearProgressFromURL(config.progressUrlParam, config.seriesUrlParam);
+  }, [config.progressUrlParam, config.seriesUrlParam]);
+
   const handleImport = useCallback((mode: 'replace' | 'merge') => {
     if (!importDialog) return;
     setWatched(prev => {
@@ -98,14 +103,8 @@ export default function Home({ config }: HomeProps) {
       saveWatched(config.storageKeys.watched, next);
       return next;
     });
-    setImportDialog(null);
-    clearProgressFromURL(config.progressUrlParam);
-  }, [importDialog, config.storageKeys.watched, config.progressUrlParam]);
-
-  const handleDismissImport = useCallback(() => {
-    setImportDialog(null);
-    clearProgressFromURL(config.progressUrlParam);
-  }, [config.progressUrlParam]);
+    handleDismissImport();
+  }, [importDialog, config.storageKeys.watched, handleDismissImport]);
 
   // Filter episodes by mode and season
   const filteredEpisodes = useMemo(() => {
@@ -117,29 +116,13 @@ export default function Home({ config }: HomeProps) {
   }, [config.episodes, activeMode, activeSeason, currentMode.markers]);
 
   // Build episode-to-arc map for search
-  const episodeToArc = useMemo(() => {
-    const map = new Map<number, string>();
-    for (const arc of config.arcs) {
-      for (const id of arc.episodeIds) {
-        map.set(id, arc.name);
-      }
-    }
-    return map;
-  }, [config.arcs]);
+  const episodeToArc = useMemo(() => buildEpisodeToArcMap(config.arcs), [config.arcs]);
 
   // Apply search filter
-  const searchedEpisodes = useMemo(() => {
-    if (!searchQuery.trim()) return filteredEpisodes;
-    const q = searchQuery.toLowerCase().trim();
-    return filteredEpisodes.filter(ep => {
-      if (ep.title.toLowerCase().includes(q)) return true;
-      if (ep.episodes.toLowerCase().includes(q)) return true;
-      if (ep.note?.toLowerCase().includes(q)) return true;
-      const arcName = episodeToArc.get(ep.id);
-      if (arcName?.toLowerCase().includes(q)) return true;
-      return false;
-    });
-  }, [filteredEpisodes, searchQuery, episodeToArc]);
+  const searchedEpisodes = useMemo(
+    () => searchEpisodes(filteredEpisodes, searchQuery, episodeToArc),
+    [filteredEpisodes, searchQuery, episodeToArc]
+  );
 
   // Group by arcs
   const arcGroups = useMemo(() => {
