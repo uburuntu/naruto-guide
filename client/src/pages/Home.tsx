@@ -86,6 +86,11 @@ export default function Home({ config }: HomeProps) {
     }
   }, [config.progressUrlParam, config.maxEpisodeId]);
 
+  const handleDismissImport = useCallback(() => {
+    setImportDialog(null);
+    clearProgressFromURL(config.progressUrlParam, config.seriesUrlParam);
+  }, [config.progressUrlParam, config.seriesUrlParam]);
+
   const handleImport = useCallback((mode: 'replace' | 'merge') => {
     if (!importDialog) return;
     setWatched(prev => {
@@ -98,14 +103,8 @@ export default function Home({ config }: HomeProps) {
       saveWatched(config.storageKeys.watched, next);
       return next;
     });
-    setImportDialog(null);
-    clearProgressFromURL(config.progressUrlParam);
-  }, [importDialog, config.storageKeys.watched, config.progressUrlParam]);
-
-  const handleDismissImport = useCallback(() => {
-    setImportDialog(null);
-    clearProgressFromURL(config.progressUrlParam);
-  }, [config.progressUrlParam]);
+    handleDismissImport();
+  }, [importDialog, config.storageKeys.watched, handleDismissImport]);
 
   // Filter episodes by mode and season
   const filteredEpisodes = useMemo(() => {
