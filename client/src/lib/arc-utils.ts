@@ -15,19 +15,18 @@ const MINUTES_PER_EPISODE = 23;
 const MINUTES_PER_FILM = 90;
 const MINUTES_PER_OVA = 25;
 
+function getEpisodeRange(label: string): [number, number] | undefined {
+  const match = /^Сери[яи]\s+(\d+)(?:\s*[–-]\s*(\d+))?$/i.exec(label);
+  if (match) return [Number(match[1]), Number(match[2] ?? match[1])];
+}
+
 /**
  * Parse the number of individual episodes/items from a display string.
  * "Серии 1-5" → 5, "Серия 26" → 1, "ОВА 1" → 1, "ФИЛЬМ 1" → 1
  */
 export function parseEpisodeCount(episodeString: string): number {
-  const rangeMatch = episodeString.match(/Серии\s+(\d+)[–-](\d+)/);
-  if (rangeMatch) {
-    return Number(rangeMatch[2]) - Number(rangeMatch[1]) + 1;
-  }
-  if (/Серия\s+\d+/.test(episodeString)) return 1;
-  if (/ОВА/.test(episodeString)) return 1;
-  if (/ФИЛЬМ/.test(episodeString)) return 1;
-  return 1;
+  const range = getEpisodeRange(episodeString);
+  return range ? range[1] - range[0] + 1 : 1;
 }
 
 /**
@@ -73,6 +72,25 @@ export function buildEpisodeToArcMap(arcs: Arc[]): Map<number, Arc> {
     }
   }
   return map;
+}
+
+export function searchEpisodes(episodes: Episode[], query: string, episodeToArc: Map<number, Arc>): Episode[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return episodes;
+
+  const numberMatch = /^(?:сери[яи]\s+)?(\d+)$/.exec(q);
+  if (numberMatch) {
+    const number = Number(numberMatch[1]);
+    return episodes.filter(ep => {
+      const range = getEpisodeRange(ep.episodes);
+      return range && range[0] <= number && number <= range[1];
+    });
+  }
+
+  return episodes.filter(ep =>
+    [ep.title, ep.episodes, ep.note, episodeToArc.get(ep.id)?.name]
+      .some(text => text?.toLowerCase().includes(q))
+  );
 }
 
 /**
