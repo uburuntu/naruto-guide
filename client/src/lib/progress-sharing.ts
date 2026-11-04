@@ -60,15 +60,14 @@ export function getProgressFromURL(paramName: string): string | null {
  * Generate a shareable URL with encoded progress.
  */
 export function generateShareURL(
-  watched: Set<number>,
-  maxEpisodeId: number,
+  encoded: string | null,
   progressParam: string,
   seriesParam: string
 ): string {
   const url = new URL(window.location.pathname, window.location.origin);
   if (seriesParam !== 'naruto') url.searchParams.set('s', seriesParam);
-  if (watched.size > 0 && maxEpisodeId > 0) {
-    url.searchParams.set(progressParam, encodeProgress(watched, maxEpisodeId));
+  if (encoded) {
+    url.searchParams.set(progressParam, encoded);
   }
   return url.href;
 }

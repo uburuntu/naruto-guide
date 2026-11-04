@@ -12,10 +12,11 @@ interface FilterPanelProps {
   activeSeason: 'all' | number;
   onSeasonChange: (season: 'all' | number) => void;
   watchModes: WatchMode[];
+  summaries: Record<string, string>;
   seasons: SeasonDefinition[];
 }
 
-function ModeCard({ mode, isActive, onClick }: { mode: WatchMode; isActive: boolean; onClick: () => void }) {
+function ModeCard({ mode, summary, isActive, onClick }: { mode: WatchMode; summary: string; isActive: boolean; onClick: () => void }) {
   return (
     <motion.button
       onClick={onClick}
@@ -35,12 +36,12 @@ function ModeCard({ mode, isActive, onClick }: { mode: WatchMode; isActive: bool
           {mode.shortName}
         </span>
       </div>
-      <p className="text-xs text-muted-foreground leading-relaxed">{mode.episodes}</p>
+      <p className="text-xs text-muted-foreground leading-relaxed">{summary}</p>
     </motion.button>
   );
 }
 
-export function FilterPanel({ activeMode, onModeChange, activeSeason, onSeasonChange, watchModes, seasons }: FilterPanelProps) {
+export function FilterPanel({ activeMode, onModeChange, activeSeason, onSeasonChange, watchModes, seasons, summaries }: FilterPanelProps) {
   return (
     <div className="space-y-4">
       {/* Варианты просмотра */}
@@ -53,6 +54,7 @@ export function FilterPanel({ activeMode, onModeChange, activeSeason, onSeasonCh
             <ModeCard
               key={mode.id}
               mode={mode}
+              summary={summaries[mode.id]}
               isActive={activeMode === mode.id}
               onClick={() => onModeChange(mode.id)}
             />

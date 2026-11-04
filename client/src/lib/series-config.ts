@@ -38,7 +38,6 @@ export interface SeriesConfig {
     collapsedArcs: string;
     spoilerMode: string;
   };
-  maxEpisodeId: number;
   progressUrlParam: string;
   seriesUrlParam: string;
   progressBarLabel: string;

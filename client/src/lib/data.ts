@@ -3,6 +3,17 @@
 
 export type MarkerType = 'С' | 'П' | 'Ф1' | 'Ф2' | 'Ф3' | 'Ф4' | 'ФН' | 'С+Ф1' | 'С+Ф2' | 'С+Ф3' | 'С+Ф4' | 'С+ФН';
 
+export interface EpisodeParts {
+  // Classification of all numbers without an override.
+  base: MarkerType;
+  story?: number[];
+  filler?: number[];
+  // Filler episodes containing required plot scenes.
+  scenes?: number[];
+  // Story episodes with filler inserts.
+  inserts?: number[];
+}
+
 export interface Episode {
   id: number;
   marker: MarkerType;
@@ -12,6 +23,8 @@ export interface Episode {
   season: number;
   releaseDate?: string;
   note?: string;
+  parts?: EpisodeParts;
+  tentative?: boolean;
 }
 
 export const MARKERS: Record<MarkerType, { label: string; color: string; bgColor: string; description: string }> = {
@@ -33,7 +46,6 @@ export interface WatchMode {
   id: string;
   name: string;
   shortName: string;
-  episodes: string;
   description: string;
   markers: MarkerType[];
   icon: string;

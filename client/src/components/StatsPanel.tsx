@@ -1,28 +1,22 @@
 /**
  * StatsPanel — статистика по типам серий и время просмотра
  */
-import type { Episode } from '@/lib/data';
-import { parseEpisodeCount, calculateViewingTime, formatViewingTime } from '@/lib/arc-utils';
+import { routeCounts, type RouteRow } from '@/lib/watch-route';
+import { calculateViewingTime, formatViewingTime } from '@/lib/arc-utils';
 import { Tv, Film, Clapperboard, Clock } from 'lucide-react';
 
 interface StatsPanelProps {
-  filteredEpisodes: Episode[];
-  watchedCount: number;
-}
-
-function countEpisodes(episodes: Episode[], type?: Episode['type']): number {
-  const filtered = type ? episodes.filter(e => e.type === type) : episodes;
-  return filtered.reduce((sum, e) => sum + parseEpisodeCount(e.episodes), 0);
+  filteredEpisodes: RouteRow[];
 }
 
 const cardClass = "bg-card/40 border border-border/50 rounded-lg p-3 flex flex-col items-center justify-center text-center";
 
-export function StatsPanel({ filteredEpisodes, watchedCount }: StatsPanelProps) {
-  const total = countEpisodes(filteredEpisodes);
-  const series = countEpisodes(filteredEpisodes, 'series');
-  const films = countEpisodes(filteredEpisodes, 'film');
-  const ovas = countEpisodes(filteredEpisodes, 'ova');
-  const viewingTime = calculateViewingTime(filteredEpisodes);
+export function StatsPanel({ filteredEpisodes }: StatsPanelProps) {
+  const { series, film: films, ova: ovas } = routeCounts(filteredEpisodes);
+  const total = series + films + ovas;
+  const full = filteredEpisodes.filter(row => !row.items[0].scene);
+  const viewingTime = calculateViewingTime(full);
+  const sceneCount = filteredEpisodes.filter(row => row.items[0].scene).reduce((sum, row) => sum + row.items.length, 0);
 
   return (
     <div className="grid grid-cols-5 gap-2 sm:gap-3">
@@ -35,7 +29,7 @@ export function StatsPanel({ filteredEpisodes, watchedCount }: StatsPanelProps) 
           <Tv className="w-4 h-4 text-accent" />
           <span className="text-2xl font-display font-bold text-foreground">{series}</span>
         </div>
-        <div className="text-xs text-muted-foreground mt-1">Серии</div>
+        <div className="text-xs text-muted-foreground mt-1">Серии{sceneCount > 0 && ` (из них только вставки: ${sceneCount})`}</div>
       </div>
       <div className={cardClass}>
         <div className="flex items-center justify-center gap-1.5">
@@ -56,7 +50,7 @@ export function StatsPanel({ filteredEpisodes, watchedCount }: StatsPanelProps) 
           <Clock className="w-4 h-4 text-accent shrink-0" />
           <span className="text-base sm:text-2xl font-display font-bold text-foreground whitespace-nowrap">~{formatViewingTime(viewingTime)}</span>
         </div>
-        <div className="text-xs text-muted-foreground mt-1">Время просмотра</div>
+        <div className="text-xs text-muted-foreground mt-1">Время просмотра{sceneCount > 0 && ' + сюжетные вставки'}</div>
       </div>
     </div>
   );
